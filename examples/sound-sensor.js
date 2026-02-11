@@ -2,7 +2,7 @@
 /**
  * Sound Sensor Example
  *
- * Demonstrates sound detection using the CrowPi3 framework.
+ * Demonstrates sound detection using the LatticeSpark framework.
  * Uses sound sensor (microphone module) on GPIO pin 24.
  *
  * This example shows:
@@ -32,7 +32,7 @@ const __dirname = dirname(__filename);
  */
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - Sound Sensor Example');
+  console.log('LatticeSpark Framework - Sound Sensor Example');
   console.log('='.repeat(60));
   console.log('');
   console.log('Make noise near the sensor to detect sound.');

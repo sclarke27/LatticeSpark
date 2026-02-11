@@ -23,7 +23,7 @@ const SENSOR_SERVICE_URL = process.env.SENSOR_SERVICE_URL || 'http://localhost:3
 const STORAGE_SERVICE_URL = process.env.STORAGE_SERVICE_URL || 'http://localhost:3001';
 const MODULE_SERVICE_URL = process.env.MODULE_SERVICE_URL || 'http://localhost:3002';
 const PROXY_TIMEOUT = parseInt(process.env.PROXY_TIMEOUT || '30000', 10);
-const API_KEY = process.env.CROWPI_API_KEY || '';
+const API_KEY = process.env.LATTICESPARK_API_KEY || '';
 
 const app = express();
 const httpServer = createServer(app);

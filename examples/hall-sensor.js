@@ -2,7 +2,7 @@
 /**
  * Hall Effect Sensor Example
  *
- * Demonstrates magnetic field detection using the CrowPi3 framework.
+ * Demonstrates magnetic field detection using the LatticeSpark framework.
  * Uses Hall effect sensor on GPIO pin 12.
  *
  * This example shows:
@@ -32,7 +32,7 @@ const __dirname = dirname(__filename);
  */
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - Hall Effect Sensor Example');
+  console.log('LatticeSpark Framework - Hall Effect Sensor Example');
   console.log('='.repeat(60));
   console.log('');
   console.log('Hold a magnet near the sensor to detect it.');

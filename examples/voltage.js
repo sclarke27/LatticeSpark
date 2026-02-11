@@ -3,7 +3,7 @@
  * Voltage Sensor Example
  *
  * Demonstrates reading the voltage sensor via SPI ADC
- * using the CrowPi3 framework.
+ * using the LatticeSpark framework.
  *
  * This example shows:
  * 1. Reading voltage value
@@ -33,7 +33,7 @@ function sleep(ms) {
 
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - Voltage Sensor Example');
+  console.log('LatticeSpark Framework - Voltage Sensor Example');
   console.log('='.repeat(60));
   console.log('');
   console.log('NOTE: SPI CE1 is broken on Pi 5.');

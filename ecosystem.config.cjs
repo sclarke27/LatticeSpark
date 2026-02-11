@@ -1,7 +1,7 @@
 /**
  * PM2 Ecosystem Configuration
  *
- * Production process manager for 24/7 CrowPi3 operation.
+ * Production process manager for 24/7 LatticeSpark operation.
  * Auto-restarts crashed services with exponential backoff.
  *
  * Usage:
@@ -24,7 +24,7 @@
 const LOG_DIR = 'logs';
 
 // Shared API key for inter-service auth. Set to enable; leave empty for dev mode (no auth).
-const CROWPI_API_KEY = process.env.CROWPI_API_KEY || '';
+const LATTICESPARK_API_KEY = process.env.LATTICESPARK_API_KEY || '';
 
 module.exports = {
   apps: [
@@ -44,7 +44,7 @@ module.exports = {
         SENSOR_SERVICE_PORT: 3000,
         STORAGE_SERVICE_URL: 'http://localhost:3001',
         CAMERA_SERVICE_URL: 'http://localhost:8081',
-        CROWPI_API_KEY,
+        LATTICESPARK_API_KEY,
       },
     },
     {
@@ -63,7 +63,7 @@ module.exports = {
         STORAGE_SERVICE_PORT: 3001,
         DB_PATH: 'data/sensors.db',
         RETENTION_HOURS: 24,
-        CROWPI_API_KEY,
+        LATTICESPARK_API_KEY,
       },
     },
     {
@@ -79,7 +79,7 @@ module.exports = {
       log_date_format: 'YYYY-MM-DD HH:mm:ss.SSS',
       merge_logs: true,
       env: {
-        CROWPI_API_KEY,
+        LATTICESPARK_API_KEY,
       },
     },
     {
@@ -97,7 +97,7 @@ module.exports = {
       merge_logs: true,
       env: {
         CAMERA_CONFIG: 'config/components.json',
-        CROWPI_API_KEY,
+        LATTICESPARK_API_KEY,
       },
     },
     {
@@ -114,7 +114,7 @@ module.exports = {
       merge_logs: true,
       env: {
         PORT: 8080,
-        CROWPI_API_KEY,
+        LATTICESPARK_API_KEY,
       },
     },
   ],

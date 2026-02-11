@@ -27,7 +27,7 @@ const BREAKER_THRESHOLD = parseInt(process.env.MODULE_BREAKER_THRESHOLD || '5', 
 const BREAKER_BASE_DELAY = parseInt(process.env.MODULE_BREAKER_BASE_DELAY || '5000', 10);
 const BREAKER_MAX_DELAY = parseInt(process.env.MODULE_BREAKER_MAX_DELAY || '300000', 10);
 const BREAKER_MAX_RETRIES = parseInt(process.env.MODULE_BREAKER_MAX_RETRIES || '10', 10);
-const API_KEY = process.env.CROWPI_API_KEY || '';
+const API_KEY = process.env.LATTICESPARK_API_KEY || '';
 
 /** Race a promise against a timeout, cleaning up the timer regardless of outcome. */
 function withTimeout(promise, ms, message) {

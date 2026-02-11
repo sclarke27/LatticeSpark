@@ -2,7 +2,7 @@
 /**
  * Ultrasonic Distance Sensor Example
  *
- * Demonstrates end-to-end distance sensor reading using the CrowPi3 framework.
+ * Demonstrates end-to-end distance sensor reading using the LatticeSpark framework.
  * Uses HC-SR04 style ultrasonic distance sensor.
  *
  * This example shows:
@@ -32,7 +32,7 @@ const __dirname = dirname(__filename);
  */
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - Distance Sensor Example');
+  console.log('LatticeSpark Framework - Distance Sensor Example');
   console.log('='.repeat(60));
   console.log('');
 

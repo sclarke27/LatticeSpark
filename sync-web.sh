@@ -14,7 +14,7 @@
 
 # Configuration
 PI_HOST="${1:-pi@10.0.0.160}"
-PI_DIR="~/crowpi3"
+PI_DIR="~/latticespark"
 SOCKET="/tmp/ssh-sync-$$"
 
 # Open a shared SSH connection (single login)

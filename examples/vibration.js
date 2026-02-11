@@ -3,7 +3,7 @@
  * Vibration Motor Example
  *
  * Demonstrates controlling the vibration motor
- * using the CrowPi3 framework.
+ * using the LatticeSpark framework.
  *
  * This example shows:
  * 1. Reading motor state
@@ -32,7 +32,7 @@ function sleep(ms) {
 
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - Vibration Motor Example');
+  console.log('LatticeSpark Framework - Vibration Motor Example');
   console.log('='.repeat(60));
   console.log('');
 

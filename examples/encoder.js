@@ -2,7 +2,7 @@
 /**
  * Rotary Encoder Example
  *
- * Demonstrates rotary encoder tracking using the CrowPi3 framework.
+ * Demonstrates rotary encoder tracking using the LatticeSpark framework.
  * Uses TCA9534 I2C GPIO expander at address 0x3c.
  *
  * This example shows:
@@ -32,7 +32,7 @@ const __dirname = dirname(__filename);
  */
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - Rotary Encoder Example');
+  console.log('LatticeSpark Framework - Rotary Encoder Example');
   console.log('='.repeat(60));
   console.log('');
   console.log('Turn the encoder knob to detect changes.');

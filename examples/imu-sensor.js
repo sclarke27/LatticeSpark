@@ -2,7 +2,7 @@
 /**
  * IMU Sensor Example (Accelerometer + Gyroscope + Magnetometer)
  *
- * Demonstrates end-to-end IMU sensor reading using the CrowPi3 framework.
+ * Demonstrates end-to-end IMU sensor reading using the LatticeSpark framework.
  * Uses ICM-20948 9-axis inertial measurement unit.
  *
  * This example shows:
@@ -32,7 +32,7 @@ const __dirname = dirname(__filename);
  */
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - IMU Sensor Example');
+  console.log('LatticeSpark Framework - IMU Sensor Example');
   console.log('='.repeat(60));
   console.log('');
 

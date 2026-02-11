@@ -4,7 +4,7 @@ import { themes, getThemeList } from './theme-registry.js';
 import { modulePages } from '../../module-manifest.js';
 
 // Map component types to their card tag names.
-// To add a new card: add its type here and import it in crowpi-dashboard.js.
+// To add a new card: add its type here and import it in latticespark-dashboard.js.
 const CARD_REGISTRY = {
   LCD1602: 'lcd-card',
   Vibration: 'vibration-card',
@@ -72,7 +72,7 @@ function renderDefaultHeader(el) {
   return html`
     <div class="header">
       <div class="header-content">
-        <h1>CrowPi3 Dashboard</h1>
+        <h1>LatticeSpark Dashboard</h1>
         <div class="header-right">
           ${renderThemeSelector(el)}
           <div class="status">

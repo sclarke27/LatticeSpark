@@ -1,6 +1,6 @@
 # Tests
 
-All tests run without CrowPi3 hardware. Hardware interactions are mocked.
+All tests run without LatticeSpark hardware. Hardware interactions are mocked.
 
 ## Running Tests
 

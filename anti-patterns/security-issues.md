@@ -1,6 +1,6 @@
 # Security Anti-Patterns
 
-> **Security vulnerabilities that could compromise the CrowPi3 system. NEVER do these.**
+> **Security vulnerabilities that could compromise the LatticeSpark system. NEVER do these.**
 
 ---
 
@@ -527,8 +527,8 @@ app.get('/redirect', (req, res) => {
 
   // 1. Whitelist allowed domains
   const allowedDomains = [
-    'https://crowpi3.com',
-    'https://api.crowpi3.com'
+    'https://latticespark.com',
+    'https://api.latticespark.com'
   ];
 
   // 2. Validate URL

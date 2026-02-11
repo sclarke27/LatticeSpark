@@ -29,7 +29,7 @@ logger = logging.getLogger('camera-server')
 # Module-level references set by start_camera_server()
 _camera_manager = None
 _camera_service = None
-_api_key = os.environ.get('CROWPI_API_KEY', '')
+_api_key = os.environ.get('LATTICESPARK_API_KEY', '')
 
 MAX_REQUEST_BODY = 4096  # 4KB cap on POST bodies
 

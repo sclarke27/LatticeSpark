@@ -3,7 +3,7 @@
  * PixelStrip RGB LED Example
  *
  * Demonstrates controlling the 6-LED WS2812B RGB strip
- * using the CrowPi3 framework.
+ * using the LatticeSpark framework.
  *
  * This example shows:
  * 1. Reading current LED state
@@ -42,7 +42,7 @@ function sleep(ms) {
 
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - PixelStrip RGB LED Example');
+  console.log('LatticeSpark Framework - PixelStrip RGB LED Example');
   console.log('='.repeat(60));
   console.log('');
 

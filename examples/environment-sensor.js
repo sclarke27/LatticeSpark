@@ -2,7 +2,7 @@
 /**
  * Temperature & Humidity Sensor Example
  *
- * Demonstrates end-to-end sensor reading using the CrowPi3 framework.
+ * Demonstrates end-to-end sensor reading using the LatticeSpark framework.
  * Uses AHT10/AHT20 I2C temperature and humidity sensor.
  *
  * This example shows:
@@ -32,7 +32,7 @@ const __dirname = dirname(__filename);
  */
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - Temperature Sensor Example');
+  console.log('LatticeSpark Framework - Temperature Sensor Example');
   console.log('='.repeat(60));
   console.log('');
 

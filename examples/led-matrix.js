@@ -3,7 +3,7 @@
  * 8x8 RGB LED Matrix Example
  *
  * Demonstrates controlling the 8x8 LED matrix
- * using the CrowPi3 framework.
+ * using the LatticeSpark framework.
  *
  * This example shows:
  * 1. Fill all LEDs with a color
@@ -32,7 +32,7 @@ function sleep(ms) {
 
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - 8x8 LED Matrix Example');
+  console.log('LatticeSpark Framework - 8x8 LED Matrix Example');
   console.log('='.repeat(60));
   console.log('');
 

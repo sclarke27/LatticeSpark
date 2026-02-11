@@ -2,7 +2,7 @@
 """
 Hardware Manager - Central hardware interface
 
-Single Python process managing all CrowPi3 hardware components.
+Single Python process managing all LatticeSpark hardware components.
 Communicates via JSON-RPC protocol over stdin/stdout (local) or TCP (remote).
 
 Architecture:

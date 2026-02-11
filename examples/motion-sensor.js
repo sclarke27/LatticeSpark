@@ -2,7 +2,7 @@
 /**
  * Motion Sensor Example
  *
- * Demonstrates PIR motion detection using the CrowPi3 framework.
+ * Demonstrates PIR motion detection using the LatticeSpark framework.
  * Uses passive infrared sensor on GPIO pin 23.
  *
  * This example shows:
@@ -32,7 +32,7 @@ const __dirname = dirname(__filename);
  */
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - Motion Sensor Example');
+  console.log('LatticeSpark Framework - Motion Sensor Example');
   console.log('='.repeat(60));
   console.log('');
   console.log('Wave your hand near the sensor to detect motion.');

@@ -5,7 +5,7 @@ PixelStrip RGB LED Driver
 WS2812B addressable LED strip driver using elecrow_ws281x library.
 
 Hardware:
-- 6x WS2812B RGB LEDs on CrowPi3
+- 6x WS2812B RGB LEDs on LatticeSpark
 - Data: GPIO 10 (SPI MOSI)
 
 Specifications:

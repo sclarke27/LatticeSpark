@@ -11,7 +11,7 @@
 
 # Configuration
 PI_HOST="${1:-pi@10.0.0.160}"  # Change this to your Pi's IP
-PI_DIR="~/crowpi3"
+PI_DIR="~/latticespark"
 
 echo "Syncing to $PI_HOST:$PI_DIR..."
 

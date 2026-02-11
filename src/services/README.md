@@ -1,4 +1,4 @@
-# CrowPi3 Services Architecture
+# LatticeSpark Services Architecture
 
 Five microservices managed by PM2 in production. All services auto-restart with exponential backoff.
 
@@ -106,7 +106,7 @@ Standalone Python service for USB camera capture, MJPEG streaming, and ML-based 
 - `POST /processors/:name/enable` — Enable an ML processor
 - `POST /processors/:name/disable` — Disable an ML processor
 
-Camera POST endpoints require `X-API-Key` header when `CROWPI_API_KEY` is set.
+Camera POST endpoints require `X-API-Key` header when `LATTICESPARK_API_KEY` is set.
 
 ### Web Server (Port 8080)
 

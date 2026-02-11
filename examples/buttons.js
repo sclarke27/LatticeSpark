@@ -2,7 +2,7 @@
 /**
  * 4-Button Panel Example
  *
- * Demonstrates button press detection using the CrowPi3 framework.
+ * Demonstrates button press detection using the LatticeSpark framework.
  * Uses SPI/ADC to read a 4-button resistor ladder panel.
  *
  * This example shows:
@@ -32,7 +32,7 @@ const __dirname = dirname(__filename);
  */
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - 4-Button Panel Example');
+  console.log('LatticeSpark Framework - 4-Button Panel Example');
   console.log('='.repeat(60));
   console.log('');
   console.log('Press buttons 1-4 to see them detected.');

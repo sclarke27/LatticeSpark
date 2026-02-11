@@ -5,7 +5,7 @@
 WS2812B 8x8 addressable LED matrix using elecrow_ws281x library.
 
 Hardware:
-- 64x WS2812B RGB LEDs in 8x8 grid on CrowPi3
+- 64x WS2812B RGB LEDs in 8x8 grid on LatticeSpark
 - Data: GPIO 10 (SPI MOSI)
 - Same SPI bus as 6-LED strip (separate PixelStrip instance)
 

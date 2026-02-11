@@ -2,7 +2,7 @@
 /**
  * Light Sensor Example
  *
- * Demonstrates ambient light reading using the CrowPi3 framework.
+ * Demonstrates ambient light reading using the LatticeSpark framework.
  * Uses BH1750 I2C ambient light sensor.
  *
  * This example shows:
@@ -32,7 +32,7 @@ const __dirname = dirname(__filename);
  */
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - Light Sensor Example');
+  console.log('LatticeSpark Framework - Light Sensor Example');
   console.log('='.repeat(60));
   console.log('');
 

@@ -9,7 +9,7 @@ A background thread executes step commands from a queue so
 read()/write() never block the JSON-RPC pipeline.
 
 Hardware:
-- 28BYJ-48 stepper motor with ULN2003 driver on CrowPi3
+- 28BYJ-48 stepper motor with ULN2003 driver on LatticeSpark
 - Pin A: GPIO 5
 - Pin B: GPIO 6
 - Pin C: GPIO 13
@@ -38,7 +38,7 @@ class StepperDriver(BaseDriver):
     """28BYJ-48 stepper motor driver with background stepping thread."""
 
     # 8-step half-stepping sequence [pin_a, pin_b, pin_c, pin_d]
-    # Matches CrowPi3 example: D → D+C → C → B+C → B → A+B → A → A+D
+    # Matches LatticeSpark example: D → D+C → C → B+C → B → A+B → A → A+D
     HALF_STEP_SEQ = [
         [0, 0, 0, 1],
         [0, 0, 1, 1],

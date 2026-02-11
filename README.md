@@ -1,6 +1,6 @@
-# CrowPi3 Framework
+# LatticeSpark Framework
 
-A general-purpose framework for interfacing with all CrowPi3 sensors and components using Node.js and Python on Raspberry Pi 5.
+A general-purpose framework for interfacing with all LatticeSpark sensors and components using Node.js and Python on Raspberry Pi 5.
 
 **23 on-board components + USB camera** implemented with a real-time web dashboard, extensible module system, and 24/7 production reliability via PM2.
 
@@ -10,7 +10,7 @@ A general-purpose framework for interfacing with all CrowPi3 sensors and compone
 
 ### Prerequisites
 
-- Raspberry Pi 5 with CrowPi3
+- Raspberry Pi 5 with LatticeSpark
 - Node.js 18+
 - Python 3.7+
 - pnpm (`npm install -g pnpm`)
@@ -19,7 +19,7 @@ A general-purpose framework for interfacing with all CrowPi3 sensors and compone
 
 ```bash
 # Clone and install
-cd ~/crowpi3
+cd ~/latticespark
 pnpm install
 pip3 install -r requirements.txt --break-system-packages
 ```
@@ -225,10 +225,10 @@ Three themes with a token-driven architecture (~130 CSS custom properties per th
 
 ## Authentication
 
-Optional shared API key via `CROWPI_API_KEY` environment variable. No key = dev mode (auth skipped).
+Optional shared API key via `LATTICESPARK_API_KEY` environment variable. No key = dev mode (auth skipped).
 
 ```bash
-export CROWPI_API_KEY="your-secret-key-here"
+export LATTICESPARK_API_KEY="your-secret-key-here"
 pnpm run services
 ```
 
@@ -257,7 +257,7 @@ Edit `PI_HOST` in the sync script to set your default Pi address.
 ## Project Structure
 
 ```
-crowpi3/
+latticespark/
 ├── src/
 │   ├── services/                 # sensor-service, storage-service, module-service
 │   ├── coordinator/              # Component lifecycle + event routing
@@ -293,7 +293,7 @@ crowpi3/
 
 ## Testing
 
-Tests run without CrowPi3 hardware — all hardware interactions are mocked.
+Tests run without LatticeSpark hardware — all hardware interactions are mocked.
 
 ```bash
 pnpm test                 # Run all tests (Python + Node.js)

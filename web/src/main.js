@@ -1,6 +1,6 @@
 /**
- * CrowPi3 Dashboard - Main Entry Point
+ * LatticeSpark Dashboard - Main Entry Point
  */
 
-import './components/crowpi-dashboard/crowpi-dashboard.js';
+import './components/latticespark-dashboard/latticespark-dashboard.js';
 import './styles/main.scss';

@@ -2,7 +2,7 @@
 /**
  * Flame Sensor Example
  *
- * Demonstrates flame detection using the CrowPi3 framework.
+ * Demonstrates flame detection using the LatticeSpark framework.
  * Uses flame detector sensor on GPIO pin 4.
  *
  * This example shows:
@@ -32,7 +32,7 @@ const __dirname = dirname(__filename);
  */
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - Flame Sensor Example');
+  console.log('LatticeSpark Framework - Flame Sensor Example');
   console.log('='.repeat(60));
   console.log('');
   console.log('Hold a flame near the sensor to detect it.');

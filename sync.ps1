@@ -6,7 +6,7 @@
 
 param(
     [string]$PiHost = "pi@10.0.0.160",
-    [string]$PiDir = "~/crowpi3"
+    [string]$PiDir = "~/latticespark"
 )
 
 Write-Host "Syncing to $PiHost`:$PiDir..." -ForegroundColor Blue

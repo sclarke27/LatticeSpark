@@ -1,7 +1,7 @@
 import { LitElement, unsafeCSS } from 'lit';
 import { io } from 'socket.io-client';
-import styles from './crowpi-dashboard.scss?inline';
-import { render, loadModulePage } from './crowpi-dashboard.view.js';
+import styles from './latticespark-dashboard.scss?inline';
+import { render, loadModulePage } from './latticespark-dashboard.view.js';
 import '../sensor-card/sensor-card.js';
 import '../pixelstrip-card/pixelstrip-card.js';
 import '../lcd-card/lcd-card.js';
@@ -15,7 +15,7 @@ import '../stepper-card/stepper-card.js';
 import '../relay-card/relay-card.js';
 import '../modules-manager/modules-manager.js';
 
-export class CrowPiDashboard extends LitElement {
+export class LatticeSparkDashboard extends LitElement {
   static properties = {
     components: { type: Array },
     sensorData: { type: Object },
@@ -87,7 +87,7 @@ export class CrowPiDashboard extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    const saved = localStorage.getItem('crowpi-theme');
+    const saved = localStorage.getItem('latticespark-theme');
     if (saved) this.setTheme(saved);
     this._fetchConfigAndConnect();
     this.addEventListener('component-write', this._writeHandler);
@@ -146,7 +146,7 @@ export class CrowPiDashboard extends LitElement {
     } else {
       document.documentElement.dataset.theme = name;
     }
-    localStorage.setItem('crowpi-theme', name);
+    localStorage.setItem('latticespark-theme', name);
   }
 
   _startClock() {
@@ -260,4 +260,4 @@ export class CrowPiDashboard extends LitElement {
   }
 }
 
-customElements.define('crowpi-dashboard', CrowPiDashboard);
+customElements.define('latticespark-dashboard', LatticeSparkDashboard);

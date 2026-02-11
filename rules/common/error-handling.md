@@ -92,7 +92,7 @@ throw new Error(`Pin ${pin} invalid`); // String only
 **CORRECT:**
 ```javascript
 // Base error class
-export class CrowPi3Error extends Error {
+export class LatticeSparkError extends Error {
   constructor(message, context = {}) {
     super(message);
     this.name = this.constructor.name;
@@ -107,31 +107,31 @@ export class CrowPi3Error extends Error {
 }
 
 // Domain-specific errors
-export class SensorError extends CrowPi3Error {
+export class SensorError extends LatticeSparkError {
   constructor(message, { sensor, code, recoverable = false, cause } = {}) {
     super(message, { sensor, code, recoverable, cause });
   }
 }
 
-export class BridgeError extends CrowPi3Error {
+export class BridgeError extends LatticeSparkError {
   constructor(message, { bridgeId, process, cause } = {}) {
     super(message, { bridgeId, process, cause });
   }
 }
 
-export class ValidationError extends CrowPi3Error {
+export class ValidationError extends LatticeSparkError {
   constructor(message, { field, value, constraint } = {}) {
     super(message, { field, value, constraint });
   }
 }
 
-export class TimeoutError extends CrowPi3Error {
+export class TimeoutError extends LatticeSparkError {
   constructor(message, { operation, timeout } = {}) {
     super(message, { operation, timeout });
   }
 }
 
-export class CircuitOpenError extends CrowPi3Error {
+export class CircuitOpenError extends LatticeSparkError {
   constructor(message, { component, state } = {}) {
     super(message, { component, state });
   }

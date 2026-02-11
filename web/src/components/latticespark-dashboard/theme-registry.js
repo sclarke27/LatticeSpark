@@ -11,24 +11,24 @@ export const themes = {
   },
   commodore: {
     label: 'Commodore',
-    brandTitle: 'CrowPi3 Control Console',
+    brandTitle: 'LatticeSpark Control Console',
     modelBadge: 'MODEL III',
     leds: ['PWR', 'LINK', 'ERR'],
     showClock: true,
     bezelStrip: true,
-    bottomLeft: 'CrowPi3 \u00B7 Elecrow Industries',
+    bottomLeft: 'LatticeSpark \u00B7 Elecrow Industries',
     bottomRight: 'Control Console Edition',
     vents: 5,
   },
   gameboy: {
     label: 'Game Boy',
     brandDot: '\u25CF',
-    brandTitle: 'CrowPi3',
+    brandTitle: 'LatticeSpark',
     brandSub: 'SENSOR SYSTEM',
     powerLed: true,
     showClock: true,
     bezelStrip: true,
-    bottomLeft: 'CrowPi3 \u00B7 Elecrow',
+    bottomLeft: 'LatticeSpark \u00B7 Elecrow',
     bottomRight: 'GAME BOY EDITION',
   }
 };

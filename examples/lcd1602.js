@@ -3,7 +3,7 @@
  * LCD1602 Display Example
  *
  * Demonstrates controlling the 16x2 character LCD display
- * using the CrowPi3 framework.
+ * using the LatticeSpark framework.
  *
  * This example shows:
  * 1. Reading current display state
@@ -33,7 +33,7 @@ function sleep(ms) {
 
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - LCD1602 Display Example');
+  console.log('LatticeSpark Framework - LCD1602 Display Example');
   console.log('='.repeat(60));
   console.log('');
 
@@ -59,9 +59,9 @@ async function main() {
     console.log('3. Writing text to LCD...');
     await coordinator.write('lcd_display', {
       line1: 'Hello World!',
-      line2: 'CrowPi3 LCD'
+      line2: 'LatticeSpark LCD'
     });
-    console.log('   Wrote: "Hello World!" / "CrowPi3 LCD"');
+    console.log('   Wrote: "Hello World!" / "LatticeSpark LCD"');
     await sleep(2000);
 
     // Step 4: Update just line 2

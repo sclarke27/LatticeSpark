@@ -3,7 +3,7 @@
  * 7-Segment Display Example
  *
  * Demonstrates controlling the 4-digit 7-segment display
- * using the CrowPi3 framework.
+ * using the LatticeSpark framework.
  *
  * This example shows:
  * 1. Reading current display state
@@ -33,7 +33,7 @@ function sleep(ms) {
 
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - 7-Segment Display Example');
+  console.log('LatticeSpark Framework - 7-Segment Display Example');
   console.log('='.repeat(60));
   console.log('');
 

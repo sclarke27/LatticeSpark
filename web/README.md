@@ -1,6 +1,6 @@
-# CrowPi3 Web Dashboard
+# LatticeSpark Web Dashboard
 
-Real-time web dashboard for monitoring and controlling all CrowPi3 sensors and actuators. Built with LitElement web components and Vite.
+Real-time web dashboard for monitoring and controlling all LatticeSpark sensors and actuators. Built with LitElement web components and Vite.
 
 ## Features
 
@@ -41,7 +41,7 @@ Production dashboard runs on `http://<pi-ip>:8080`.
 web/
 ├── src/
 │   ├── components/
-│   │   ├── crowpi-dashboard/    # Main dashboard shell, theme switching, card routing
+│   │   ├── latticespark-dashboard/    # Main dashboard shell, theme switching, card routing
 │   │   ├── sensor-card/         # Generic sensor card (temperature, distance, light, etc.)
 │   │   ├── buttons-card/        # 4-button panel card
 │   │   ├── buzzer-card/         # Buzzer on/off control
@@ -123,5 +123,5 @@ The default theme uses mixin fallback values (no tokens needed). Retro themes ov
 
 1. Create directory `web/src/components/<name>-card/`
 2. Create 3 files following the pattern above (see existing cards for examples)
-3. Import and register in `crowpi-dashboard.js` card routing
+3. Import and register in `latticespark-dashboard.js` card routing
 4. Use shared mixins from `_card-mixins.scss` for consistent theming

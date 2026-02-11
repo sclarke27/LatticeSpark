@@ -3,7 +3,7 @@
  * Servo Motor Example
  *
  * Demonstrates controlling the SG90 servo motor
- * using the CrowPi3 framework.
+ * using the LatticeSpark framework.
  *
  * This example shows:
  * 1. Reading servo angle
@@ -32,7 +32,7 @@ function sleep(ms) {
 
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - Servo Motor Example');
+  console.log('LatticeSpark Framework - Servo Motor Example');
   console.log('='.repeat(60));
   console.log('');
 

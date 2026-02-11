@@ -7,7 +7,7 @@ Uses gpiozero library (compatible with Raspberry Pi 5).
 Decodes NEC protocol IR signals via bit-banging in a background thread.
 
 Hardware:
-- IR receiver module on CrowPi3
+- IR receiver module on LatticeSpark
 - Signal: GPIO 20
 
 Specifications:

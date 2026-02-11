@@ -6,7 +6,7 @@ SPI-based MFRC522 NFC/RFID card reader.
 Uses mfrc522 library for SPI communication.
 
 Hardware:
-- MFRC522 RFID module on CrowPi3
+- MFRC522 RFID module on LatticeSpark
 - SPI bus 0, device 0 (CE0)
 - RST: GPIO 25
 

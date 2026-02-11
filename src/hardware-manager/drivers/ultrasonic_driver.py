@@ -6,7 +6,7 @@ Measures distance using ultrasonic sensor (HC-SR04 style).
 Uses gpiozero library (compatible with Raspberry Pi 5).
 
 Hardware:
-- Ultrasonic sensor on CrowPi3
+- Ultrasonic sensor on LatticeSpark
 - Trigger: GPIO27
 - Echo: GPIO25
 

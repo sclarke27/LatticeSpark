@@ -1,5 +1,5 @@
 /**
- * Base class for all CrowPi3 modules.
+ * Base class for all LatticeSpark modules.
  *
  * Subclasses override lifecycle methods:
  *   initialize()    — called once after construction

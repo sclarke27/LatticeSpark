@@ -2,7 +2,7 @@
 /**
  * RFID Reader Example
  *
- * Demonstrates MFRC522 NFC/RFID card reading using the CrowPi3 framework.
+ * Demonstrates MFRC522 NFC/RFID card reading using the LatticeSpark framework.
  * Uses SPI-based MFRC522 reader module.
  *
  * This example shows:
@@ -32,7 +32,7 @@ const __dirname = dirname(__filename);
  */
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - RFID Reader Example');
+  console.log('LatticeSpark Framework - RFID Reader Example');
   console.log('='.repeat(60));
   console.log('');
   console.log('Hold an RFID/NFC card near the reader.');

@@ -3,7 +3,7 @@
  * Active Buzzer Example
  *
  * Demonstrates controlling the active buzzer
- * using the CrowPi3 framework.
+ * using the LatticeSpark framework.
  *
  * This example shows:
  * 1. Reading buzzer state
@@ -38,7 +38,7 @@ async function beep(coordinator, ms) {
 
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - Active Buzzer Example');
+  console.log('LatticeSpark Framework - Active Buzzer Example');
   console.log('='.repeat(60));
   console.log('');
 

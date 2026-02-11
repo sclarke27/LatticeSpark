@@ -2,7 +2,7 @@
 /**
  * IR Remote Receiver Example
  *
- * Demonstrates infrared remote control reception using the CrowPi3 framework.
+ * Demonstrates infrared remote control reception using the LatticeSpark framework.
  * Uses NEC protocol IR receiver on GPIO pin 20.
  *
  * This example shows:
@@ -33,7 +33,7 @@ const __dirname = dirname(__filename);
  */
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - IR Remote Receiver Example');
+  console.log('LatticeSpark Framework - IR Remote Receiver Example');
   console.log('='.repeat(60));
   console.log('');
   console.log('Point your remote at the IR receiver and press buttons.');

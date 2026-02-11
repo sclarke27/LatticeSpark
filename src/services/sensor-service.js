@@ -31,7 +31,7 @@ const PORT = process.env.SENSOR_SERVICE_PORT || 3000;
 const STORAGE_SERVICE_URL = process.env.STORAGE_SERVICE_URL || 'http://localhost:3001';
 const CAMERA_SERVICE_URL = process.env.CAMERA_SERVICE_URL || 'http://localhost:8081';
 const DEBUG = process.env.SENSOR_DEBUG === 'true';
-const API_KEY = process.env.CROWPI_API_KEY || '';
+const API_KEY = process.env.LATTICESPARK_API_KEY || '';
 
 const app = express();
 const httpServer = createServer(app);

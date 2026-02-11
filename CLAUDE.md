@@ -1,4 +1,4 @@
-# CrowPi3 Framework - AI Coding Rules
+# LatticeSpark Framework - AI Coding Rules
 
 > Before writing any code, read the relevant rules and patterns listed below.
 
@@ -131,7 +131,7 @@ Used by: vibration, relay, buzzer.
 
 | File | Purpose |
 |------|---------|
-| [web/src/components/crowpi-dashboard/](web/src/components/crowpi-dashboard/) | Main dashboard, theme chrome, card routing |
+| [web/src/components/latticespark-dashboard/](web/src/components/latticespark-dashboard/) | Main dashboard, theme chrome, card routing |
 | [web/src/components/sensor-card/](web/src/components/sensor-card/) | Generic card (temperature, distance, etc.) |
 | [web/src/components/shared/_card-base.scss](web/src/components/shared/_card-base.scss) | Shared card styles (token-driven) |
 | [web/src/components/shared/_card-mixins.scss](web/src/components/shared/_card-mixins.scss) | SCSS mixin library for all cards |
@@ -147,10 +147,10 @@ Used by: vibration, relay, buzzer.
 3 new files + 2 one-line edits. Zero card files touched.
 
 1. Copy `web/src/styles/themes/_commodore.scss` to `_mytheme.scss`, change selector to `[data-theme="mytheme"]`, adjust token values
-2. Create `web/src/components/crowpi-dashboard/_chrome-mytheme.scss` for dashboard shell styling
+2. Create `web/src/components/latticespark-dashboard/_chrome-mytheme.scss` for dashboard shell styling
 3. Add `@use 'themes/mytheme';` to `web/src/styles/main.scss`
-4. Add entry to `web/src/components/crowpi-dashboard/theme-registry.js`
-5. Add `@use 'chrome-mytheme';` to `web/src/components/crowpi-dashboard/crowpi-dashboard.scss`
+4. Add entry to `web/src/components/latticespark-dashboard/theme-registry.js`
+5. Add `@use 'chrome-mytheme';` to `web/src/components/latticespark-dashboard/latticespark-dashboard.scss`
 
 ## Module System
 
@@ -165,7 +165,7 @@ See [MODULE_GUIDE.md](MODULE_GUIDE.md) for a full walkthrough.
 
 ## Authentication
 
-Shared API key via `CROWPI_API_KEY` env var. No key = dev mode (no auth).
+Shared API key via `LATTICESPARK_API_KEY` env var. No key = dev mode (no auth).
 
 | Where | How |
 |-------|-----|

@@ -2,7 +2,7 @@
 /**
  * Touch Sensor Example
  *
- * Demonstrates capacitive touch detection using the CrowPi3 framework.
+ * Demonstrates capacitive touch detection using the LatticeSpark framework.
  * Uses touch sensor on GPIO pin 17.
  *
  * This example shows:
@@ -32,7 +32,7 @@ const __dirname = dirname(__filename);
  */
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - Touch Sensor Example');
+  console.log('LatticeSpark Framework - Touch Sensor Example');
   console.log('='.repeat(60));
   console.log('');
   console.log('Touch the sensor pad to detect contact.');

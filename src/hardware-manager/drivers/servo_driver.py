@@ -5,7 +5,7 @@ Servo Motor Driver
 PWM-based servo motor using gpiozero Servo.
 
 Hardware:
-- SG90 micro servo on CrowPi3
+- SG90 micro servo on LatticeSpark
 - Signal: GPIO 19
 
 Specifications:

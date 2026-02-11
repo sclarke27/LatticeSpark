@@ -7,7 +7,7 @@ Reads analog values from ADC channel 4 via SPI to determine
 which of 4 buttons is pressed.
 
 Hardware:
-- 4-button panel on CrowPi3
+- 4-button panel on LatticeSpark
 - SPI bus 0, device 1 (CE1)
 - ADC channel 4
 
@@ -157,7 +157,7 @@ class ButtonsDriver(BaseDriver):
         Read button panel state with debouncing.
 
         Double-reads with 50ms delay to debounce, matching
-        the CrowPi3 example code pattern.
+        the LatticeSpark example code pattern.
 
         Returns:
             Dict with keys:

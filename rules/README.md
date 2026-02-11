@@ -1,6 +1,6 @@
 # Coding Rules
 
-> Follow these rules when writing code for the CrowPi3 framework.
+> Follow these rules when writing code for the LatticeSpark framework.
 
 ## Rules by Topic
 

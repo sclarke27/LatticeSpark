@@ -3,7 +3,7 @@
  * Relay Example
  *
  * Demonstrates controlling the relay module
- * using the CrowPi3 framework.
+ * using the LatticeSpark framework.
  *
  * This example shows:
  * 1. Reading relay state
@@ -32,7 +32,7 @@ function sleep(ms) {
 
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - Relay Example');
+  console.log('LatticeSpark Framework - Relay Example');
   console.log('='.repeat(60));
   console.log('');
 

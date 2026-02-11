@@ -1,6 +1,6 @@
 # Module Guide
 
-This guide walks through creating a new CrowPi3 module from scratch. Modules add custom automation and optional UI pages without modifying the core framework.
+This guide walks through creating a new LatticeSpark module from scratch. Modules add custom automation and optional UI pages without modifying the core framework.
 
 ---
 

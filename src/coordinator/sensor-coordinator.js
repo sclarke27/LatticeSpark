@@ -2,7 +2,7 @@
 /**
  * Sensor Coordinator
  *
- * Central coordination point for all CrowPi3 components.
+ * Central coordination point for all LatticeSpark components.
  * Loads configuration, manages hardware manager client, and provides simple API.
  *
  * Features:
@@ -30,7 +30,7 @@ import { createHardwareManagerClient } from '../hardware-manager-client/hardware
 /**
  * Sensor Coordinator
  *
- * Main entry point for CrowPi3 framework.
+ * Main entry point for LatticeSpark framework.
  */
 export class SensorCoordinator extends EventEmitter {
   // Default configuration

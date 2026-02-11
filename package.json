@@ -1,7 +1,7 @@
 {
-  "name": "@crowpi/framework",
+  "name": "@latticespark/framework",
   "version": "0.1.0",
-  "description": "General-purpose framework for interfacing with all CrowPi3 sensors and components",
+  "description": "General-purpose framework for interfacing with all LatticeSpark sensors and components",
   "type": "module",
   "main": "src/coordinator/sensor-coordinator.js",
   "exports": {
@@ -39,7 +39,7 @@
   },
   "packageManager": "pnpm@9.0.0",
   "keywords": [
-    "crowpi3",
+    "latticespark",
     "raspberry-pi",
     "sensors",
     "iot",

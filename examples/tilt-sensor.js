@@ -2,7 +2,7 @@
 /**
  * Tilt Sensor Example
  *
- * Demonstrates tilt detection using the CrowPi3 framework.
+ * Demonstrates tilt detection using the LatticeSpark framework.
  * Uses tilt switch sensor on GPIO pin 22.
  *
  * This example shows:
@@ -32,7 +32,7 @@ const __dirname = dirname(__filename);
  */
 async function main() {
   console.log('='.repeat(60));
-  console.log('CrowPi3 Framework - Tilt Sensor Example');
+  console.log('LatticeSpark Framework - Tilt Sensor Example');
   console.log('='.repeat(60));
   console.log('');
   console.log('Tilt the board to detect changes.');
