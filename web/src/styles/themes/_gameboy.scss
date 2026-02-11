@@ -1,0 +1,260 @@
+// ============================================
+// GAME BOY THEME — DMG-001
+// Palette + all component design tokens.
+// ============================================
+
+[data-theme="gameboy"] {
+  /* ── Palette ── */
+  --bg-primary: #6a6e66;
+  --bg-secondary: #bcc0b8;
+  --bg-card: #bcc0b8;
+  --surface-raised: #cdd1c9;
+  --surface-recessed: #8bac0f;
+  --surface-deep: #306230;
+
+  --text-primary: #5a5e56;
+  --text-secondary: #7a7e76;
+  --text-emboss: #cdd1c9;
+
+  --accent: #306230;
+  --accent-dim: #6b8c2a;
+  --accent-glow: rgba(48, 98, 48, 0.3);
+
+  --accent-alt: #8b2252;
+  --accent-alt-dim: #6a1840;
+  --accent-alt-glow: rgba(139, 34, 82, 0.3);
+
+  --border: #a0a49c;
+  --border-light: #cdd1c9;
+  --border-dark: #888c84;
+
+  --success: #22aa44;
+  --warning: #ddaa33;
+  --error: #dd5544;
+
+  --trim-color: #70746c;
+  --trim-highlight: #888c84;
+
+  --card-radius: 4px;
+  --card-gap: 2px;
+  --card-padding: 0;
+  --card-header-bg: linear-gradient(180deg, #cdd1c9, #bcc0b8);
+
+  --font-body: 'Silkscreen', cursive;
+  --font-mono: 'Press Start 2P', cursive;
+  --font-label: 'Silkscreen', cursive;
+  --font-display: 'Press Start 2P', cursive;
+
+  /* ── Card Structure ── */
+  --card-header-margin: 0;
+  --card-body-padding: 6px 8px 8px;
+  --card-body-gap: 4px;
+  --card-animation: gb-pop-in 0.3s ease forwards;
+  --card-initial-opacity: 0;
+  --card-header-padding: 5px 8px 4px;
+  --card-header-border: 1px solid var(--border-dark);
+  --card-title-font: var(--font-label);
+  --card-title-size: 8px;
+  --card-title-weight: 400;
+  --card-title-spacing: 0;
+  --card-title-transform: none;
+  --card-title-shadow: none;
+  --card-type-font: var(--font-display);
+  --card-type-size: 5px;
+  --card-type-weight: 400;
+  --card-type-color: var(--surface-raised);
+  --card-type-bg: var(--text-primary);
+  --card-type-padding: 2px 4px;
+  --card-type-radius: 2px;
+  --card-type-spacing: 0.5px;
+  --card-no-data-font: var(--font-display);
+  --card-no-data-size: 8px;
+  --card-no-data-color: var(--accent-dim);
+  --card-timestamp-font: var(--font-display);
+  --card-timestamp-size: 7px;
+  --card-timestamp-color: var(--accent);
+  --card-timestamp-shadow: none;
+
+  /* ── Screen / Display ── */
+  --screen-bg: var(--surface-recessed);
+  --screen-border-width: 3px;
+  --screen-border-color: #5a5e56;
+  --screen-border-top-color: #484c44;
+  --screen-border-left-color: #484c44;
+  --screen-border-right-color: #6a6e64;
+  --screen-border-bottom-color: #6a6e64;
+  --screen-radius: 2px;
+  --screen-shadow: inset 0 2px 5px rgba(0,0,0,0.25), inset 0 -1px 3px rgba(155,188,15,0.1), 0 1px 0 var(--surface-raised);
+  --screen-overlay: repeating-linear-gradient(0deg, rgba(0,0,0,0.05) 0px, rgba(0,0,0,0.05) 1px, transparent 1px, transparent 3px), repeating-linear-gradient(90deg, rgba(0,0,0,0.05) 0px, rgba(0,0,0,0.05) 1px, transparent 1px, transparent 3px);
+  --screen-reflection: radial-gradient(ellipse at 25% 25%, rgba(255,255,255,0.14), transparent 60%);
+  --screen-text-font: var(--font-display);
+  --screen-text-size: 9px;
+  --screen-text-color: var(--accent);
+  --screen-text-shadow: none;
+
+  /* ── Primary Button (toggle, send, fill — A/B maroon) ── */
+  --btn-primary-bg: radial-gradient(circle at 40% 35%, #a83268, #8b2252);
+  --btn-primary-bg-on: radial-gradient(circle at 40% 35%, #dd5544, #aa2222);
+  --btn-primary-color: rgba(255,255,255,0.7);
+  --btn-primary-color-on: rgba(255,255,255,0.9);
+  --btn-primary-border: 2px solid #6a1840;
+  --btn-primary-border-on: 2px solid #881818;
+  --btn-primary-radius: 50%;
+  --btn-primary-shadow: 0 3px 0 #6a1840, inset 0 1px 0 rgba(255,255,255,0.2);
+  --btn-primary-shadow-on: 0 3px 0 #881818, inset 0 1px 0 rgba(255,255,255,0.2);
+  --btn-primary-shadow-active: 0 0 0 transparent, inset 0 2px 3px rgba(0,0,0,0.4);
+  --btn-primary-transform-active: translateY(2px);
+  --btn-primary-font: var(--font-display);
+  --btn-primary-size: 7px;
+  --btn-primary-weight: 400;
+  --btn-primary-padding: 0;
+  --btn-primary-spacing: 0;
+  --btn-primary-text-transform: none;
+  --btn-primary-width: 28px;
+  --btn-primary-height: 28px;
+
+  /* ── Secondary Button (presets, actions — D-pad dark) ── */
+  --btn-secondary-bg: #2a2c28;
+  --btn-secondary-bg-active: #3a3c38;
+  --btn-secondary-color: rgba(255,255,255,0.6);
+  --btn-secondary-color-active: rgba(255,255,255,0.9);
+  --btn-secondary-border: 1px solid rgba(0,0,0,0.3);
+  --btn-secondary-radius: 2px;
+  --btn-secondary-shadow: 0 2px 0 rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08);
+  --btn-secondary-shadow-active: inset 0 2px 3px rgba(0,0,0,0.4);
+  --btn-secondary-transform-active: translateY(1px);
+  --btn-secondary-font: var(--font-display);
+  --btn-secondary-size: 6px;
+  --btn-secondary-weight: 400;
+  --btn-secondary-padding: 4px 8px;
+  --btn-secondary-spacing: 0;
+  --btn-secondary-text-transform: none;
+
+  /* ── Tertiary Button (home, stop — Start/Select oblong) ── */
+  --btn-tertiary-bg: linear-gradient(180deg, #7a7e76, #686c64);
+  --btn-tertiary-bg-on: linear-gradient(180deg, #55dd77, #22aa44);
+  --btn-tertiary-color: var(--text-secondary);
+  --btn-tertiary-color-on: white;
+  --btn-tertiary-border: 1px solid #70746c;
+  --btn-tertiary-radius: 5px;
+  --btn-tertiary-shadow: 0 1px 0 rgba(0,0,0,0.2);
+  --btn-tertiary-shadow-active: inset 0 1px 2px rgba(0,0,0,0.3);
+  --btn-tertiary-transform-active: translateY(1px);
+  --btn-tertiary-font: var(--font-display);
+  --btn-tertiary-size: 4px;
+  --btn-tertiary-weight: 400;
+  --btn-tertiary-padding: 0;
+  --btn-tertiary-spacing: 0;
+  --btn-tertiary-text-transform: none;
+  --btn-tertiary-width: 30px;
+  --btn-tertiary-height: 10px;
+
+  /* ── Tab Bar ── */
+  --tab-bar-bg: var(--border);
+  --tab-bar-border: 2px solid var(--border-dark);
+  --tab-font: var(--font-display);
+  --tab-size: 5px;
+  --tab-weight: 400;
+  --tab-color: var(--surface-raised);
+  --tab-spacing: 0.5px;
+  --tab-transform: none;
+  --tab-shadow: none;
+  --tab-padding: 4px 4px;
+  --tab-hover-bg: rgba(255,255,255,0.08);
+  --tab-active-color: var(--text-primary);
+  --tab-active-bg: var(--bg-card);
+  --tab-active-border: transparent;
+  --tab-active-shadow: none;
+  --tab-active-indicator-bg: #6b8c2a;
+  --tab-active-indicator-shadow: 0 0 4px rgba(107,140,42,0.5);
+  --tab-divider: 1px solid var(--border-dark);
+
+  /* ── Labels ── */
+  --label-font: var(--font-label);
+  --label-size: 7px;
+  --label-weight: 400;
+  --label-color: var(--text-primary);
+  --label-spacing: 1px;
+  --label-transform: none;
+  --label-shadow: none;
+
+  /* ── Display Values ── */
+  --value-font: var(--font-display);
+  --value-size: 16px;
+  --value-size-sm: 8px;
+  --value-size-lg: 24px;
+  --value-color: var(--accent);
+  --value-shadow: none;
+  --value-unit-font: var(--font-label);
+  --value-unit-size: 8px;
+  --value-unit-color: var(--accent-dim);
+
+  /* ── Text Inputs ── */
+  --input-bg: var(--bg-card);
+  --input-border: 1px solid var(--border);
+  --input-radius: 2px;
+  --input-color: var(--text-primary);
+  --input-font: var(--font-display);
+  --input-size: 8px;
+  --input-padding: 3px 6px;
+  --input-shadow: inset 0 1px 2px rgba(0,0,0,0.15);
+  --input-focus-border: var(--accent);
+
+  /* ── Range Sliders ── */
+  --slider-bg: var(--surface-recessed);
+  --slider-border: 2px solid #5a5e56;
+  --slider-border-top-color: #484c44;
+  --slider-border-left-color: #484c44;
+  --slider-border-right-color: #6a6e64;
+  --slider-border-bottom-color: #6a6e64;
+  --slider-radius: 2px;
+  --slider-shadow: inset 0 1px 3px rgba(0,0,0,0.25), 0 1px 0 var(--surface-raised);
+  --slider-thumb-bg: var(--border);
+  --slider-thumb-border: 1px solid var(--border-dark);
+  --slider-thumb-shadow: 0 1px 0 rgba(0,0,0,0.3);
+
+  /* ── Icon / Indicator ── */
+  --icon-size: 44px;
+  --icon-bg: var(--border);
+  --icon-border: 2px solid var(--border-dark);
+  --icon-shadow: 0 2px 0 rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+  --icon-active-border-color: var(--accent);
+  --icon-active-bg: var(--accent-dim);
+  --icon-active-shadow: 0 2px 0 rgba(0,0,0,0.3);
+
+  /* ── Button Indicator (buttons-card circles) ── */
+  --indicator-size: 36px;
+  --indicator-bg: #2a2c28;
+  --indicator-border: 1px solid rgba(0,0,0,0.3);
+  --indicator-shadow: 0 2px 0 rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08);
+  --indicator-active-border-color: var(--accent);
+  --indicator-active-bg: #3a3c38;
+  --indicator-active-shadow: inset 0 2px 3px rgba(0,0,0,0.4);
+  --indicator-num-size: 6px;
+  --indicator-num-font: var(--font-display);
+  --indicator-num-color: rgba(255,255,255,0.6);
+  --indicator-num-active-color: rgba(255,255,255,0.9);
+  --indicator-label-size: 7px;
+  --indicator-label-font: var(--font-label);
+  --indicator-label-spacing: 1px;
+  --indicator-label-transform: none;
+  --indicator-label-shadow: none;
+
+  /* ── Chrome (dashboard shell) ── */
+  --chrome-bg: radial-gradient(ellipse at 40% 30%, rgba(255,255,255,0.12), transparent 50%), radial-gradient(ellipse at 60% 70%, rgba(0,0,0,0.06), transparent 50%);
+  --chrome-texture: url("data:image/svg+xml,%3Csvg width='4' height='4' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='1' cy='1' r='0.5' fill='rgba(0,0,0,0.06)'/%3E%3C/svg%3E");
+  --chrome-texture-rendering: pixelated;
+  --chrome-grid-gap: 2px;
+  --chrome-grid-bg: var(--border-dark);
+  --chrome-grid-padding: 2px;
+  --chrome-select-bg: var(--surface-deep);
+  --chrome-select-border: 2px solid #5a5e56;
+  --chrome-select-color: #9bbc0f;
+  --chrome-select-font: var(--font-label);
+  --chrome-select-size: 8px;
+  --chrome-select-spacing: 1px;
+  --chrome-select-transform: none;
+  --chrome-select-shadow: inset 0 1px 4px rgba(0,0,0,0.5);
+  --chrome-select-radius: 3px;
+  --chrome-select-padding: 2px 8px;
+}

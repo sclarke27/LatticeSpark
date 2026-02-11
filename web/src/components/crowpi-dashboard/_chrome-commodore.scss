@@ -1,0 +1,188 @@
+// Commodore theme — dashboard chrome styling.
+// Imported by crowpi-dashboard.scss.
+
+:host([theme="commodore"]) {
+  background: var(--bg-card);
+  background-image: var(--chrome-bg);
+
+  // Noise texture overlay
+  &::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--chrome-texture);
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  .header { display: none; }
+
+  .container {
+    flex: 1;
+    padding: 0;
+    overflow-y: auto;
+  }
+
+  .sensors-grid {
+    --tile-columns: 5;
+    grid-template-columns: repeat(var(--tile-columns), 1fr);
+    grid-auto-rows: auto;
+    gap: var(--chrome-grid-gap);
+    background: var(--chrome-grid-bg);
+    justify-content: stretch;
+
+    > * {
+      width: auto;
+      height: auto;
+    }
+  }
+
+  @media (max-width: 1200px) { .sensors-grid { --tile-columns: 4; } }
+  @media (max-width: 900px) { .sensors-grid { --tile-columns: 3; } }
+  @media (max-width: 600px) { .sensors-grid { --tile-columns: 2; } }
+}
+
+// Commodore top bezel
+:host([theme="commodore"]) .chrome-top-bar {
+  background: linear-gradient(180deg, var(--surface-raised) 0%, var(--bg-card) 100%);
+  border-bottom: 3px solid var(--border);
+  padding: 14px 30px 10px;
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 6px;
+    left: 30px; right: 30px;
+    height: 1px;
+    background: var(--border);
+    box-shadow: 0 1px 0 var(--text-emboss);
+  }
+
+  h1, .chrome-title {
+    font-family: var(--font-label);
+    font-size: 13px;
+    letter-spacing: 5px;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    text-shadow: 0 1px 0 var(--text-emboss);
+  }
+}
+
+:host([theme="commodore"]) .chrome-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--error);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  border-radius: 2px;
+  letter-spacing: 2px;
+}
+
+:host([theme="commodore"]) .chrome-indicators {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+:host([theme="commodore"]) .chrome-led {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+
+  &.on-green {
+    background: radial-gradient(circle at 40% 35%, #66ff99, #22cc55);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.2), 0 0 6px rgba(34,204,85,0.5);
+  }
+
+  &.on-amber {
+    background: radial-gradient(circle at 40% 35%, #ffbb44, #cc8811);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.15), 0 0 6px rgba(204,136,17,0.5);
+    animation: led-pulse 2s ease-in-out infinite;
+  }
+
+  &.on-red {
+    background: radial-gradient(circle at 40% 35%, #ff6655, #cc3333);
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.2), 0 0 6px rgba(204,51,51,0.4);
+    animation: led-pulse 2s ease-in-out infinite;
+  }
+
+  &.off {
+    background: radial-gradient(circle at 40% 35%, #6a6660, #4a4640);
+  }
+}
+
+@keyframes led-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+:host([theme="commodore"]) .chrome-led-label {
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+:host([theme="commodore"]) .chrome-status-label {
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+
+  &.offline { color: var(--error); }
+  &.reconnecting { color: var(--warning); }
+}
+
+:host([theme="commodore"]) .chrome-clock {
+  background: var(--surface-recessed);
+  border: 2px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 12px;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.5), 0 1px 0 var(--text-emboss);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  color: var(--accent);
+  text-shadow: 0 0 8px var(--accent-glow);
+  letter-spacing: 2px;
+}
+
+// Wood trim divider
+:host([theme="commodore"]) .chrome-strip {
+  height: 8px;
+  background: linear-gradient(180deg, var(--trim-highlight), var(--trim-color), var(--trim-highlight));
+  border-top: 1px solid rgba(255,255,255,0.1);
+  border-bottom: 1px solid rgba(0,0,0,0.3);
+}
+
+// Bottom bezel
+:host([theme="commodore"]) .chrome-bottom-bar {
+  background: linear-gradient(180deg, var(--bg-card), var(--border));
+  border-top: 2px solid var(--border);
+  padding: 8px 30px;
+}
+
+:host([theme="commodore"]) .chrome-bottom-text {
+  font-family: var(--font-label);
+  font-size: 7px;
+  letter-spacing: 3px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+:host([theme="commodore"]) .chrome-vents {
+  display: flex;
+  gap: 3px;
+  justify-content: center;
+}
+
+:host([theme="commodore"]) .chrome-vent {
+  width: 18px;
+  height: 2px;
+  background: var(--border);
+  border-radius: 1px;
+  box-shadow: 0 1px 0 var(--text-emboss);
+}

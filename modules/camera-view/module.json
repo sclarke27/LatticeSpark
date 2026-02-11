@@ -1,0 +1,17 @@
+{
+  "name": "Camera View",
+  "description": "Live camera feed with ML processor controls and detection display",
+  "version": "1.0.0",
+  "enabled": true,
+  "components": {
+    "read": [],
+    "write": []
+  },
+  "triggers": {
+    "interval": 60000
+  },
+  "ui": {
+    "page": true,
+    "label": "Camera"
+  }
+}

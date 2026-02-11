@@ -1,0 +1,67 @@
+@use '../shared/card-base';
+@use '../shared/card-mixins' as m;
+
+.card-body {
+  gap: var(--card-body-gap, 1.5rem);
+  align-items: center;
+  justify-content: center;
+}
+
+.buzzer-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.buzzer-icon {
+  @include m.icon-element(64px);
+  color: var(--text-secondary);
+  transition: border-color 0.3s, background 0.3s, box-shadow 0.3s, color 0.3s;
+
+  &.buzzing {
+    @include m.icon-element-active;
+    color: var(--accent-alt, #f59e0b);
+    animation: pulse 0.3s infinite;
+  }
+}
+
+.buzzer-label {
+  @include m.display-label(0.9rem);
+
+  &.active {
+    color: var(--accent-alt, #f59e0b);
+  }
+}
+
+.toggle-btn {
+  @include m.btn-primary(0.6rem 2rem, 6px);
+
+  &.off {
+    background: var(--btn-primary-bg, var(--accent));
+    color: var(--btn-primary-color, white);
+  }
+
+  &.on {
+    @include m.btn-primary-on;
+    background: var(--btn-primary-bg-on, var(--error, #ef4444));
+    color: var(--btn-primary-color-on, white);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+@media (max-width: 639px) {
+  .buzzer-icon {
+    width: 48px;
+    height: 48px;
+
+    svg {
+      width: 24px;
+      height: 24px;
+    }
+  }
+}

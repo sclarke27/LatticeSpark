@@ -1,0 +1,248 @@
+// ============================================
+// COMMODORE THEME — Retro Console (C64)
+// Palette + all component design tokens.
+// ============================================
+
+[data-theme="commodore"] {
+  /* ── Palette ── */
+  --bg-primary: #3a3632;
+  --bg-secondary: #e8e2d6;
+  --bg-card: #d8d0c4;
+  --surface-raised: #e8e2d6;
+  --surface-recessed: #2a2622;
+  --surface-deep: #1a1816;
+
+  --text-primary: #5a5448;
+  --text-secondary: #8a8478;
+  --text-emboss: #f0ece4;
+
+  --accent: #33ff66;
+  --accent-dim: #1a8033;
+  --accent-glow: rgba(51, 255, 102, 0.3);
+
+  --accent-alt: #ff9922;
+  --accent-alt-dim: #804c11;
+  --accent-alt-glow: rgba(255, 153, 34, 0.3);
+
+  --border: #a89e8e;
+  --border-light: #e8e2d6;
+  --border-dark: #8a8070;
+
+  --success: #33ff66;
+  --warning: #ff9922;
+  --error: #cc3333;
+
+  --trim-color: #5a3e28;
+  --trim-highlight: #7a5e40;
+
+  --card-radius: 0px;
+  --card-gap: 0px;
+  --card-padding: 0;
+  --card-header-bg: linear-gradient(180deg, var(--border-light), var(--bg-card));
+
+  --font-body: 'Chakra Petch', sans-serif;
+  --font-mono: 'VT323', monospace;
+  --font-label: 'Michroma', sans-serif;
+  --font-display: 'Oxanium', sans-serif;
+
+  /* ── Card Structure ── */
+  --card-header-margin: 0;
+  --card-body-padding: 8px 10px 10px;
+  --card-body-gap: 5px;
+  --card-animation: module-in 0.4s ease forwards;
+  --card-initial-opacity: 0;
+  --card-border-top-color: var(--border-light);
+  --card-border-left-color: var(--border-light);
+  --card-header-padding: 6px 10px 4px;
+  --card-header-border: 1px solid var(--border);
+  --card-title-font: var(--font-label);
+  --card-title-size: 7px;
+  --card-title-weight: 400;
+  --card-title-spacing: 2px;
+  --card-title-transform: uppercase;
+  --card-title-shadow: 0 1px 0 var(--text-emboss);
+  --card-type-font: inherit;
+  --card-type-size: 7px;
+  --card-type-weight: 700;
+  --card-type-color: var(--bg-card);
+  --card-type-bg: var(--text-primary);
+  --card-type-padding: 1px 5px;
+  --card-type-radius: 2px;
+  --card-type-spacing: 1px;
+  --card-no-data-font: var(--font-mono);
+  --card-no-data-color: var(--accent-dim);
+  --card-timestamp-font: var(--font-mono);
+  --card-timestamp-size: 11px;
+  --card-timestamp-color: var(--accent-dim);
+  --card-timestamp-shadow: 0 0 4px var(--accent-glow);
+
+  /* ── Screen / Display ── */
+  --screen-bg: var(--surface-deep);
+  --screen-border-width: 2px;
+  --screen-border-color: var(--border);
+  --screen-radius: 3px;
+  --screen-shadow: inset 0 2px 8px rgba(0,0,0,0.5), 0 1px 0 var(--text-emboss);
+  --screen-overlay: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.1) 2px, rgba(0,0,0,0.1) 4px);
+  --screen-reflection: radial-gradient(ellipse at 30% 20%, rgba(255,255,255,0.06), transparent 50%);
+  --screen-text-font: var(--font-mono);
+  --screen-text-size: 16px;
+  --screen-text-color: var(--accent);
+  --screen-text-shadow: 0 0 6px var(--accent-glow);
+
+  /* ── Primary Button (toggle, send, fill) ── */
+  --btn-primary-bg: linear-gradient(180deg, #ece4d6, #d8d0c2);
+  --btn-primary-bg-on: linear-gradient(180deg, #dd4444, #bb2222);
+  --btn-primary-color: var(--text-primary);
+  --btn-primary-color-on: white;
+  --btn-primary-border: 1px solid rgba(0,0,0,0.25);
+  --btn-primary-border-on: 1px solid rgba(0,0,0,0.25);
+  --btn-primary-radius: 3px;
+  --btn-primary-shadow: 0 2px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.3);
+  --btn-primary-shadow-active: inset 0 2px 3px rgba(0,0,0,0.3);
+  --btn-primary-transform-active: translateY(1px);
+  --btn-primary-font: var(--font-body);
+  --btn-primary-size: 8px;
+  --btn-primary-weight: 700;
+  --btn-primary-padding: 6px 16px;
+  --btn-primary-spacing: 1px;
+  --btn-primary-text-transform: uppercase;
+  --btn-primary-width: auto;
+  --btn-primary-height: auto;
+
+  /* ── Secondary Button (presets, actions) ── */
+  --btn-secondary-bg: linear-gradient(180deg, #ece4d6, #d8d0c2);
+  --btn-secondary-bg-active: linear-gradient(180deg, var(--accent), var(--accent-dim));
+  --btn-secondary-color: var(--text-primary);
+  --btn-secondary-color-active: white;
+  --btn-secondary-border: 1px solid rgba(0,0,0,0.25);
+  --btn-secondary-radius: 3px;
+  --btn-secondary-shadow: 0 2px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.3);
+  --btn-secondary-shadow-active: inset 0 2px 3px rgba(0,0,0,0.3);
+  --btn-secondary-transform-active: translateY(1px);
+  --btn-secondary-font: var(--font-body);
+  --btn-secondary-size: 8px;
+  --btn-secondary-weight: 700;
+  --btn-secondary-padding: 5px 10px;
+  --btn-secondary-spacing: 1px;
+  --btn-secondary-text-transform: uppercase;
+
+  /* ── Tertiary Button (home, stop, backlight) ── */
+  --btn-tertiary-bg: linear-gradient(180deg, #ece4d6, #d8d0c2);
+  --btn-tertiary-bg-on: linear-gradient(180deg, #44cc66, #22aa44);
+  --btn-tertiary-color: var(--text-primary);
+  --btn-tertiary-color-on: white;
+  --btn-tertiary-border: 1px solid rgba(0,0,0,0.25);
+  --btn-tertiary-radius: 3px;
+  --btn-tertiary-shadow: 0 2px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.3);
+  --btn-tertiary-shadow-active: inset 0 2px 3px rgba(0,0,0,0.3);
+  --btn-tertiary-transform-active: translateY(1px);
+  --btn-tertiary-font: var(--font-body);
+  --btn-tertiary-size: 8px;
+  --btn-tertiary-weight: 700;
+  --btn-tertiary-padding: 4px 8px;
+  --btn-tertiary-spacing: 1px;
+  --btn-tertiary-text-transform: uppercase;
+  --btn-tertiary-width: auto;
+  --btn-tertiary-height: auto;
+
+  /* ── Tab Bar ── */
+  --tab-bar-bg: linear-gradient(180deg, var(--border), var(--bg-card));
+  --tab-bar-border: 1px solid var(--border);
+  --tab-font: var(--font-body);
+  --tab-size: 7px;
+  --tab-weight: 700;
+  --tab-color: var(--text-secondary);
+  --tab-spacing: 1.5px;
+  --tab-transform: uppercase;
+  --tab-shadow: 0 1px 0 var(--text-emboss);
+  --tab-padding: 4px 6px;
+  --tab-hover-bg: rgba(255,255,255,0.15);
+  --tab-active-color: var(--text-primary);
+  --tab-active-bg: var(--bg-card);
+  --tab-active-border: var(--accent-alt);
+  --tab-active-shadow: inset 0 -2px 0 var(--accent-alt);
+  --tab-divider: 1px solid var(--border);
+
+  /* ── Labels ── */
+  --label-font: var(--font-body);
+  --label-size: 7px;
+  --label-weight: 600;
+  --label-color: var(--text-primary);
+  --label-spacing: 1.5px;
+  --label-transform: uppercase;
+  --label-shadow: 0 1px 0 var(--text-emboss);
+
+  /* ── Display Values ── */
+  --value-font: var(--font-mono);
+  --value-size: 26px;
+  --value-size-sm: 15px;
+  --value-size-lg: 48px;
+  --value-color: var(--accent);
+  --value-shadow: 0 0 10px var(--accent-glow);
+  --value-unit-font: var(--font-mono);
+  --value-unit-size: 13px;
+  --value-unit-color: var(--accent-dim);
+
+  /* ── Text Inputs ── */
+  --input-bg: var(--surface-recessed);
+  --input-border: 1px solid var(--border);
+  --input-radius: 2px;
+  --input-color: var(--accent);
+  --input-font: var(--font-mono);
+  --input-size: 13px;
+  --input-padding: 3px 6px;
+  --input-shadow: inset 0 1px 3px rgba(0,0,0,0.4);
+  --input-focus-border: var(--accent-dim);
+
+  /* ── Range Sliders ── */
+  --slider-bg: var(--surface-recessed);
+  --slider-border: 1px solid var(--border);
+  --slider-radius: 3px;
+  --slider-shadow: inset 0 1px 3px rgba(0,0,0,0.4);
+  --slider-thumb-bg: linear-gradient(180deg, var(--surface-raised), var(--border));
+  --slider-thumb-border: 1px solid var(--border-dark);
+  --slider-thumb-shadow: none;
+
+  /* ── Icon / Indicator ── */
+  --icon-size: 48px;
+  --icon-bg: radial-gradient(circle at 40% 35%, var(--surface-raised), var(--border) 70%);
+  --icon-border: 2px solid var(--border);
+  --icon-shadow: 0 2px 4px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.4);
+  --icon-active-border-color: var(--accent-alt);
+  --icon-active-bg: none;
+  --icon-active-shadow: 0 2px 4px rgba(0,0,0,0.3), 0 0 8px var(--accent-alt-glow);
+
+  /* ── Button Indicator (buttons-card circles) ── */
+  --indicator-size: 48px;
+  --indicator-bg: var(--bg-secondary);
+  --indicator-border: 3px solid var(--border);
+  --indicator-shadow: none;
+  --indicator-active-border-color: var(--accent);
+  --indicator-active-bg: rgba(99, 102, 241, 0.15);
+  --indicator-active-shadow: 0 0 12px rgba(99, 102, 241, 0.4);
+  --indicator-num-size: 1.1rem;
+  --indicator-num-font: var(--font-display);
+  --indicator-num-color: var(--text-primary);
+  --indicator-num-active-color: white;
+  --indicator-label-size: 8px;
+  --indicator-label-font: inherit;
+  --indicator-label-spacing: 1.5px;
+  --indicator-label-transform: uppercase;
+  --indicator-label-shadow: 0 1px 0 var(--text-emboss);
+
+  /* ── Chrome (dashboard shell) ── */
+  --chrome-bg: radial-gradient(ellipse at 30% 20%, rgba(255,255,255,0.15), transparent 60%), radial-gradient(ellipse at 70% 80%, rgba(0,0,0,0.05), transparent 50%);
+  --chrome-texture: url("data:image/svg+xml,%3Csvg width='6' height='6' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='6' height='6' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  --chrome-grid-gap: 0;
+  --chrome-grid-bg: transparent;
+  --chrome-select-bg: var(--surface-recessed);
+  --chrome-select-border: 2px solid var(--border);
+  --chrome-select-color: var(--accent);
+  --chrome-select-font: var(--font-body);
+  --chrome-select-size: 10px;
+  --chrome-select-spacing: 1px;
+  --chrome-select-transform: uppercase;
+  --chrome-select-shadow: inset 0 2px 4px rgba(0,0,0,0.4), 0 1px 0 var(--text-emboss);
+  --chrome-select-radius: 3px;
+  --chrome-select-padding: 2px 8px;
+}

@@ -1,0 +1,521 @@
+{
+  "components": {
+    "temperature_sensor": {
+      "type": "AHT10",
+      "label": "Environment Sensor",
+      "category": "environmental",
+      "i2c": {
+        "address": "0x38"
+      },
+      "retries": 3,
+      "delay": 0.5,
+      "pollInterval": 5000,
+      "historyWindow": 1,
+      "metrics": [
+        {
+          "id": "temperature",
+          "label": "Temp (\u00B0C)",
+          "icon": "\uD83C\uDF21\uFE0F",
+          "type": "single",
+          "keys": ["temperature"],
+          "unit": "\u00B0C",
+          "precision": 1
+        },
+        {
+          "id": "temperature_f",
+          "label": "Temp (\u00B0F)",
+          "icon": "\uD83C\uDF21\uFE0F",
+          "type": "single",
+          "keys": ["temperature_f"],
+          "unit": "\u00B0F",
+          "precision": 1
+        },
+        {
+          "id": "humidity",
+          "label": "Humidity",
+          "icon": "\uD83D\uDCA7",
+          "type": "single",
+          "keys": ["humidity"],
+          "unit": "%",
+          "precision": 1
+        }
+      ]
+    },
+    "distance_sensor": {
+      "type": "Ultrasonic",
+      "label": "Distance Sensor",
+      "category": "distance",
+      "pins": {
+        "trigger": 16,
+        "echo": 26
+      },
+      "retries": 3,
+      "max_distance": 5,
+      "pollInterval": 100,
+      "historyWindow": 1,
+      "metrics": [
+        {
+          "id": "distance",
+          "label": "Distance",
+          "icon": "\uD83D\uDCCF",
+          "type": "single",
+          "keys": ["distance"],
+          "unit": "cm",
+          "precision": 1
+        }
+      ]
+    },
+    "light_sensor": {
+      "type": "BH1750",
+      "label": "Light Sensor",
+      "category": "environmental",
+      "i2c": {
+        "address": "0x5c"
+      },
+      "retries": 3,
+      "delay": 0.2,
+      "pollInterval": 1000,
+      "historyWindow": 1,
+      "metrics": [
+        {
+          "id": "light",
+          "label": "Light",
+          "icon": "\u2600\uFE0F",
+          "type": "single",
+          "keys": ["light"],
+          "unit": "lx",
+          "precision": 1
+        }
+      ]
+    },
+    "hall_sensor": {
+      "type": "Hall",
+      "label": "Hall Effect Sensor",
+      "category": "proximity",
+      "pins": {
+        "signal": 12
+      },
+      "pollInterval": 1000,
+      "historyWindow": 1,
+      "metrics": [
+        {
+          "id": "magnet",
+          "label": "Magnet",
+          "icon": "\uD83E\uDDF2",
+          "type": "single",
+          "keys": ["detected"],
+          "unit": "",
+          "precision": 0
+        }
+      ]
+    },
+    "tilt_sensor": {
+      "type": "Tilt",
+      "label": "Tilt Sensor",
+      "category": "proximity",
+      "pins": {
+        "signal": 22
+      },
+      "pollInterval": 1000,
+      "historyWindow": 1,
+      "metrics": [
+        {
+          "id": "tilt",
+          "label": "Tilt",
+          "icon": "\u2195\uFE0F",
+          "type": "single",
+          "keys": ["tilted"],
+          "unit": "",
+          "precision": 0
+        }
+      ]
+    },
+    "motion_sensor": {
+      "type": "PIR",
+      "label": "Motion Sensor",
+      "category": "motion",
+      "pins": {
+        "signal": 23
+      },
+      "pollInterval": 100,
+      "historyWindow": 1,
+      "metrics": [
+        {
+          "id": "motion",
+          "label": "Motion",
+          "icon": "\uD83D\uDEB6",
+          "type": "single",
+          "keys": ["motion"],
+          "unit": "",
+          "precision": 0
+        }
+      ]
+    },
+    "ir_receiver": {
+      "type": "IR",
+      "label": "IR Remote Receiver",
+      "category": "input",
+      "pins": {
+        "signal": 20
+      },
+      "holdDuration": 1.0,
+      "pollInterval": 100,
+      "historyWindow": 1,
+      "metrics": [
+        {
+          "id": "key_code",
+          "label": "Button",
+          "icon": "\uD83D\uDCE1",
+          "type": "label_map",
+          "keys": ["key_code"],
+          "unit": "",
+          "precision": 0,
+          "map": {
+            "69": "CH-",
+            "70": "CH",
+            "71": "CH+",
+            "68": "PREV",
+            "64": "NEXT",
+            "67": "PLAY/PAUSE",
+            "7": "VOL-",
+            "21": "VOL+",
+            "9": "EQ",
+            "22": "0",
+            "25": "100+",
+            "13": "200+",
+            "12": "1",
+            "24": "2",
+            "94": "3",
+            "8": "4",
+            "28": "5",
+            "90": "6",
+            "66": "7",
+            "82": "8",
+            "74": "9"
+          },
+          "defaultLabel": "---"
+        }
+      ]
+    },
+    "encoder": {
+      "type": "Encoder",
+      "label": "Rotary Encoder",
+      "category": "input",
+      "i2c": {
+        "address": "0x3c"
+      },
+      "retries": 3,
+      "delay": 0.01,
+      "pollInterval": 100,
+      "historyWindow": 1,
+      "metrics": [
+        {
+          "id": "position",
+          "label": "Position",
+          "icon": "\uD83C\uDFAE",
+          "type": "single",
+          "keys": ["position"],
+          "unit": "",
+          "precision": 0
+        },
+        {
+          "id": "direction",
+          "label": "Direction",
+          "icon": "\u2194\uFE0F",
+          "type": "single",
+          "keys": ["direction"],
+          "unit": "",
+          "precision": 0
+        }
+      ]
+    },
+    "touch_sensor": {
+      "type": "Touch",
+      "label": "Touch Sensor",
+      "category": "proximity",
+      "pins": {
+        "signal": 17
+      },
+      "pollInterval": 100,
+      "historyWindow": 1,
+      "metrics": [
+        {
+          "id": "touch",
+          "label": "Touch",
+          "icon": "\uD83D\uDC46",
+          "type": "single",
+          "keys": ["touched"],
+          "unit": "",
+          "precision": 0
+        }
+      ]
+    },
+    "rfid_reader": {
+      "type": "RFID",
+      "label": "RFID Reader",
+      "category": "input",
+      "holdDuration": 2.0,
+      "pollInterval": 200,
+      "historyWindow": 1,
+      "metrics": [
+        {
+          "id": "card",
+          "label": "Card",
+          "icon": "\uD83D\uDCB3",
+          "type": "label_map",
+          "keys": ["uid"],
+          "map": {},
+          "defaultLabel": "No card"
+        }
+      ]
+    },
+    "imu_sensor": {
+      "type": "LSM6DSL",
+      "label": "IMU Sensor",
+      "category": "motion",
+      "i2c": {
+        "address": "0x6b"
+      },
+      "retries": 3,
+      "delay": 0.1,
+      "pollInterval": 100,
+      "historyWindow": 1,
+      "metrics": [
+        {
+          "id": "accelerometer",
+          "label": "Accel",
+          "icon": "\uD83D\uDE80",
+          "type": "axis",
+          "keys": ["accel_x", "accel_y", "accel_z"],
+          "chartKey": "accel",
+          "unit": "m/s\u00B2",
+          "precision": 2
+        },
+        {
+          "id": "gyroscope",
+          "label": "Gyro",
+          "icon": "\uD83C\uDF00",
+          "type": "axis",
+          "keys": ["gyro_x", "gyro_y", "gyro_z"],
+          "chartKey": "gyro",
+          "unit": "\u00B0/s",
+          "precision": 2
+        }
+      ]
+    },
+    "pixelstrip": {
+      "type": "PixelStrip",
+      "label": "RGB LED Strip",
+      "category": "output",
+      "pins": {
+        "data": 10
+      },
+      "numLeds": 6,
+      "pollInterval": 500,
+      "skipStorage": true,
+      "metrics": []
+    },
+    "lcd_display": {
+      "type": "LCD1602",
+      "label": "LCD Display",
+      "category": "output",
+      "i2c": {
+        "address": "0x21"
+      },
+      "columns": 16,
+      "rows": 2,
+      "pollInterval": 500,
+      "skipStorage": true,
+      "metrics": []
+    },
+    "vibration_motor": {
+      "type": "Vibration",
+      "label": "Vibration Motor",
+      "category": "output",
+      "pins": {
+        "signal": 27
+      },
+      "pollInterval": 500,
+      "skipStorage": true,
+      "metrics": []
+    },
+    "flame_detector": {
+      "type": "Flame",
+      "label": "Flame Detector",
+      "category": "environmental",
+      "pins": {
+        "signal": 4
+      },
+      "pollInterval": 1000,
+      "historyWindow": 1,
+      "metrics": [
+        {
+          "id": "flame",
+          "label": "Flame",
+          "icon": "\uD83D\uDD25",
+          "type": "single",
+          "keys": ["detected"],
+          "unit": "",
+          "precision": 0
+        }
+      ]
+    },
+    "sound_sensor": {
+      "type": "Sound",
+      "label": "Sound Sensor",
+      "category": "environmental",
+      "pins": {
+        "signal": 24
+      },
+      "pollInterval": 100,
+      "historyWindow": 1,
+      "metrics": [
+        {
+          "id": "sound",
+          "label": "Sound",
+          "icon": "\uD83D\uDD0A",
+          "type": "single",
+          "keys": ["detected"],
+          "unit": "",
+          "precision": 0
+        }
+      ]
+    },
+    "button_panel": {
+      "enabled": false,
+      "type": "Buttons",
+      "label": "4-Button Panel",
+      "category": "input",
+      "spi": {
+        "bus": 0,
+        "device": 1,
+        "speed": 1000000
+      },
+      "pollInterval": 100,
+      "historyWindow": 1,
+      "metrics": [
+        {
+          "id": "button",
+          "label": "Button",
+          "icon": "\uD83D\uDD18",
+          "type": "single",
+          "keys": ["button"],
+          "unit": "",
+          "precision": 0
+        }
+      ]
+    },
+    "segment_display": {
+      "type": "SevenSegment",
+      "label": "7-Segment Display",
+      "category": "output",
+      "i2c": {
+        "address": "0x70"
+      },
+      "pollInterval": 500,
+      "skipStorage": true,
+      "metrics": []
+    },
+    "buzzer": {
+      "type": "Buzzer",
+      "label": "Active Buzzer",
+      "category": "output",
+      "pins": {
+        "signal": 18
+      },
+      "pollInterval": 500,
+      "skipStorage": true,
+      "metrics": []
+    },
+    "led_matrix": {
+      "type": "LEDMatrix",
+      "label": "8x8 RGB LED Matrix",
+      "category": "output",
+      "pins": {
+        "data": 10
+      },
+      "numLeds": 64,
+      "pollInterval": 500,
+      "skipStorage": true,
+      "metrics": []
+    },
+    "servo": {
+      "type": "Servo",
+      "label": "Servo Motor",
+      "category": "output",
+      "pins": {
+        "signal": 19
+      },
+      "pollInterval": 500,
+      "skipStorage": true,
+      "metrics": []
+    },
+    "stepper_motor": {
+      "type": "Stepper",
+      "label": "Stepper Motor",
+      "category": "output",
+      "pins": {
+        "pin_a": 5,
+        "pin_b": 6,
+        "pin_c": 13,
+        "pin_d": 25
+      },
+      "pollInterval": 500,
+      "skipStorage": true,
+      "metrics": []
+    },
+    "relay": {
+      "type": "Relay",
+      "label": "Relay",
+      "category": "output",
+      "pins": {
+        "signal": 21
+      },
+      "pollInterval": 500,
+      "skipStorage": true,
+      "metrics": []
+    },
+    "voltage_sensor": {
+      "type": "Voltage",
+      "label": "Voltage Sensor",
+      "enabled": false,
+      "category": "input",
+      "spi": {
+        "bus": 0,
+        "device": 1,
+        "speed": 1000000
+      },
+      "channel": 6,
+      "pollInterval": 1000,
+      "metrics": [
+        {
+          "id": "voltage",
+          "label": "Voltage",
+          "icon": "\u26A1",
+          "type": "single",
+          "keys": ["voltage"],
+          "unit": "V",
+          "precision": 2,
+          "min": 0,
+          "max": 3.3
+        }
+      ]
+    }
+  },
+  "camera": {
+    "type": "Camera",
+    "label": "USB Camera",
+    "category": "vision",
+    "enabled": true,
+    "skipStorage": true,
+    "device": 0,
+    "resolution": [640, 480],
+    "fps": 15,
+    "jpeg_quality": 80,
+    "mjpeg_port": 8081,
+    "processors": {
+      "face_detector": { "enabled": false },
+      "motion_detector": { "enabled": false }
+    }
+  }
+}

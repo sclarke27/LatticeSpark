@@ -1,0 +1,77 @@
+@use '../shared/card-base';
+@use '../shared/card-mixins' as m;
+
+.card-body {
+  gap: var(--card-body-gap, 1rem);
+  justify-content: center;
+}
+
+.lcd-preview {
+  @include m.screen-element(#0a2a0a, 2px, #1a3a1a, 6px);
+  @include m.screen-text(var(--font-mono), 1.1rem, #4aff4a, 0 0 8px rgba(74, 255, 74, 0.4));
+  padding: 0.75rem 1rem;
+  letter-spacing: 0.15em;
+  line-height: 1.6;
+  transition: opacity 0.3s;
+
+  &.backlight-off {
+    opacity: 0.3;
+    text-shadow: none;
+  }
+}
+
+.lcd-line {
+  white-space: pre;
+  overflow: hidden;
+  min-height: 1.4em;
+}
+
+.lcd-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.input-label {
+  @include m.display-label(0.8rem);
+  min-width: 3.5rem;
+}
+
+.lcd-input {
+  @include m.text-input;
+  flex: 1;
+}
+
+.lcd-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.backlight-btn {
+  @include m.btn-tertiary;
+
+  &.on {
+    @include m.btn-tertiary-on;
+  }
+}
+
+.send-btn {
+  @include m.btn-primary(0.4rem 1.25rem, 4px, none);
+  background: var(--btn-primary-bg, var(--accent));
+  color: var(--btn-primary-color, white);
+}
+
+@media (max-width: 639px) {
+  .lcd-preview {
+    font-size: var(--screen-text-size, 0.9rem);
+    padding: 0.5rem 0.75rem;
+  }
+}

@@ -1,0 +1,18 @@
+# Python Runtime Dependencies
+# Install on Raspberry Pi: pip3 install -r requirements.txt --break-system-packages
+
+# Temperature/Humidity sensor (AHT10/AHT20 via I2C)
+adafruit-circuitpython-ahtx0>=1.0.0
+
+# 6-axis IMU sensor (LSM6DSL - accelerometer, gyroscope)
+# Uses smbus (pre-installed on Raspberry Pi)
+
+# GPIO support (for future sensors)
+RPi.GPIO>=0.7.1
+
+# Camera service (OpenCV for USB camera capture + MJPEG streaming)
+# headless variant has no GUI dependencies (no X11/Qt needed)
+opencv-python-headless>=4.8.0
+
+# Future dependencies will be added here as we add more components
+# e.g., RPi.GPIO, spidev, smbus2, etc.

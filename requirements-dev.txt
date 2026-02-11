@@ -1,0 +1,14 @@
+# Python Development Dependencies
+# Install: pip3 install -r requirements-dev.txt
+
+# Testing
+pytest>=7.0.0
+pytest-mock>=3.10.0
+pytest-cov>=4.0.0
+
+# Type checking (optional but recommended)
+mypy>=1.0.0
+
+# Linting (optional)
+pylint>=2.15.0
+black>=22.0.0

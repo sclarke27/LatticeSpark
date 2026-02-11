@@ -1,0 +1,59 @@
+@use '../shared/card-base';
+@use '../shared/card-mixins' as m;
+
+.card-body {
+  gap: var(--card-body-gap, 1rem);
+  align-items: center;
+  justify-content: center;
+}
+
+.buttons-grid {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.button-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.button-circle {
+  @include m.indicator-circle;
+
+  .active > & {
+    @include m.indicator-circle-active;
+  }
+}
+
+.button-num {
+  @include m.indicator-num;
+
+  .active & {
+    @include m.indicator-num-active;
+  }
+}
+
+.button-label {
+  @include m.indicator-label;
+
+  &.active {
+    color: var(--accent);
+  }
+}
+
+@media (max-width: 639px) {
+  .button-circle {
+    width: 40px;
+    height: 40px;
+  }
+
+  .button-num {
+    font-size: 0.95rem;
+  }
+
+  .buttons-grid {
+    gap: 0.5rem;
+  }
+}

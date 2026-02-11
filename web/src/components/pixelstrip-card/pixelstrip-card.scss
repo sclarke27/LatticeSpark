@@ -1,0 +1,87 @@
+@use '../shared/card-base';
+@use '../shared/card-mixins' as m;
+
+:host {
+  position: relative;
+}
+
+.card-body {
+  gap: var(--card-body-gap);
+  justify-content: center;
+  flex: 0.8;
+}
+
+.led-strip {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+}
+
+.led-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid var(--icon-border, rgba(255, 255, 255, 0.2));
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  padding: 0;
+  outline: none;
+
+  &:hover {
+    transform: scale(1.15);
+    border-color: rgba(255, 255, 255, 0.5);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+.brightness-control {
+  padding: 0 0.5rem;
+}
+
+.brightness-label {
+  @include m.display-label(0.8rem);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.brightness-value {
+  @include m.display-value-sm;
+  font-weight: 600;
+}
+
+input[type="range"] {
+  @include m.range-slider;
+
+  &::-webkit-slider-thumb {
+    @include m.slider-thumb;
+  }
+
+  &::-moz-range-thumb {
+    @include m.slider-thumb;
+  }
+}
+
+.hidden-picker {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (max-width: 639px) {
+  .led-strip {
+    gap: 0.5rem;
+  }
+
+  .led-circle {
+    width: 36px;
+    height: 36px;
+  }
+}

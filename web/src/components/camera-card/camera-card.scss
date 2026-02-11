@@ -1,0 +1,84 @@
+@use '../shared/card-base';
+@use '../shared/card-mixins' as m;
+
+.card {
+  aspect-ratio: auto;
+}
+
+.card-body {
+  gap: var(--card-body-gap, 0.75rem);
+  align-items: stretch;
+}
+
+.stream-container {
+  @include m.screen-element(#000, 0, transparent, 4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.stream {
+  width: 100%;
+  max-height: 150px;
+  object-fit: contain;
+  display: block;
+}
+
+.detections {
+  @include m.screen-text(var(--font-mono), 0.8rem, var(--accent));
+  font-weight: 500;
+  padding: 0.25rem 0;
+}
+
+.processors {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.processors-label {
+  @include m.display-label(0.75rem);
+}
+
+.processor-toggles {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.processor-btn {
+  @include m.btn-secondary(0.4rem 0.75rem, 6px);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  .processor-name {
+    text-transform: capitalize;
+  }
+
+  .processor-status {
+    font-size: var(--btn-secondary-size, 0.7rem);
+    font-weight: 600;
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+  }
+
+  &.off .processor-status {
+    color: var(--text-secondary);
+    background: var(--bg-card);
+  }
+
+  &.on {
+    border-color: var(--accent);
+
+    .processor-status {
+      color: white;
+      background: var(--accent);
+    }
+  }
+
+  &:hover {
+    opacity: 0.85;
+  }
+}

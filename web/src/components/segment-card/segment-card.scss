@@ -1,0 +1,94 @@
+@use '../shared/card-base';
+@use '../shared/card-mixins' as m;
+
+.card-body {
+  gap: var(--card-body-gap);
+  justify-content: center;
+  flex: 0.8;
+}
+
+.segment-preview {
+  @include m.screen-element(#0a0a1a, 2px, #1a1a3a, 6px);
+  padding: 1rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+.segment-digit {
+  @include m.screen-text(var(--font-mono), 2.5rem, #ff3333, 0 0 10px rgba(255, 51, 51, 0.5));
+  font-weight: 700;
+  min-width: 1.5ch;
+  text-align: center;
+  line-height: 1;
+}
+
+.segment-colon {
+  @include m.screen-text(var(--font-mono), 2.5rem, #ff3333, 0 0 10px rgba(255, 51, 51, 0.5));
+  font-weight: 700;
+  line-height: 1;
+  margin: 0 0.1rem;
+
+  &.off {
+    opacity: 0.15;
+    text-shadow: none;
+  }
+}
+
+.segment-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.input-label {
+  @include m.display-label(0.8rem);
+  min-width: 3.5rem;
+}
+
+.segment-input {
+  @include m.text-input;
+  flex: 1;
+}
+
+.segment-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.colon-btn {
+  @include m.btn-tertiary;
+
+  &.on {
+    @include m.btn-tertiary-on;
+  }
+}
+
+.send-btn {
+  @include m.btn-primary(0.4rem 1.25rem, 4px, none);
+  background: var(--btn-primary-bg, var(--accent));
+  color: var(--btn-primary-color, white);
+}
+
+@media (max-width: 639px) {
+  .segment-digit {
+    font-size: var(--screen-text-size, 1.8rem);
+  }
+
+  .segment-colon {
+    font-size: var(--screen-text-size, 1.8rem);
+  }
+
+  .segment-preview {
+    padding: 0.75rem 1rem;
+  }
+}

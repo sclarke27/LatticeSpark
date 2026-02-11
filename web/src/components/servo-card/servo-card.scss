@@ -1,0 +1,77 @@
+@use '../shared/card-base';
+@use '../shared/card-mixins' as m;
+
+.card-body {
+  gap: var(--card-body-gap, 0.75rem);
+  align-items: center;
+  justify-content: center;
+}
+
+.gauge-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.gauge {
+  width: 160px;
+  height: auto;
+}
+
+.angle-display {
+  @include m.display-value;
+  margin-top: -0.25rem;
+}
+
+.slider-control {
+  width: 100%;
+  padding: 0 0.5rem;
+}
+
+input[type="range"] {
+  @include m.range-slider;
+
+  &::-webkit-slider-thumb {
+    @include m.slider-thumb;
+  }
+
+  &::-moz-range-thumb {
+    @include m.slider-thumb;
+  }
+}
+
+.slider-labels {
+  @include m.display-label(0.7rem);
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.25rem;
+}
+
+.presets {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.preset-btn {
+  @include m.btn-secondary(0.35rem 0.65rem, 4px);
+
+  &:hover {
+    color: var(--text-primary);
+    border-color: var(--accent-dim);
+  }
+
+  &.active {
+    @include m.btn-secondary-active;
+  }
+}
+
+@media (max-width: 639px) {
+  .gauge {
+    width: 130px;
+  }
+
+  .angle-display {
+    font-size: var(--value-size, 1.25rem);
+  }
+}

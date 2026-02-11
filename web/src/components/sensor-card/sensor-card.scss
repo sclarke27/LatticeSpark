@@ -1,0 +1,169 @@
+@use '../shared/card-base';
+@use '../shared/card-mixins' as m;
+
+.card {
+  height: auto;
+  aspect-ratio: 1;
+}
+
+.card-header {
+  margin-bottom: 0;
+}
+
+.tab-bar {
+  @include m.tab-bar;
+}
+
+.tab {
+  @include m.tab-item;
+
+  &.active {
+    @include m.tab-item-active;
+  }
+}
+
+.card-body {
+  gap: var(--card-body-gap, 0);
+  overflow-y: auto;
+}
+
+.current-readings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--card-body-gap, 0.75rem);
+  flex: 1;
+  min-height: 0;
+}
+
+.reading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.reading-label {
+  @include m.display-label(0.875rem);
+}
+
+.reading-value {
+  @include m.display-value;
+}
+
+.reading-unit {
+  @include m.display-unit;
+  margin-left: 0.25rem;
+}
+
+.sensor-group {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.sensor-group-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.axis-readings {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--card-body-gap, 0.75rem);
+  margin-bottom: var(--card-body-gap, 0.75rem);
+}
+
+.axis-value {
+  text-align: center;
+}
+
+.axis-label {
+  @include m.display-label(0.7rem);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+
+  .color-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+}
+
+.axis-number {
+  @include m.display-value-sm;
+  font-weight: 600;
+}
+
+.axis-unit {
+  @include m.display-unit(0.7rem);
+  margin-left: 0.15rem;
+}
+
+.label-map-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+  flex: 1;
+}
+
+.label-map-title {
+  @include m.display-label(0.875rem);
+  margin-bottom: 0.5rem;
+}
+
+.label-map-value {
+  @include m.display-value-lg;
+  letter-spacing: 1px;
+}
+
+.chart-container {
+  @include m.screen-element(transparent, 0, transparent, 0);
+  flex: 1;
+  min-height: 120px;
+}
+
+.timestamp {
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 639px) {
+  .tab-bar {
+    margin-bottom: 0.5rem;
+  }
+
+  .tab {
+    padding: var(--tab-padding, 0.375rem 0.75rem);
+    font-size: var(--tab-size, 0.75rem);
+  }
+
+  .reading-value {
+    font-size: var(--value-size, 1.25rem);
+  }
+
+  .sensor-group {
+    padding: 0.5rem;
+  }
+
+  .axis-readings {
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .axis-number {
+    font-size: var(--value-size-sm, 0.95rem);
+  }
+
+  .chart-container {
+    min-height: 100px;
+  }
+}

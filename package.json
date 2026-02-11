@@ -1,0 +1,71 @@
+{
+  "name": "@crowpi/framework",
+  "version": "0.1.0",
+  "description": "General-purpose framework for interfacing with all CrowPi3 sensors and components",
+  "type": "module",
+  "main": "src/coordinator/sensor-coordinator.js",
+  "exports": {
+    ".": "./src/coordinator/sensor-coordinator.js",
+    "./hardware-manager-client": "./src/hardware-manager-client/hardware-manager-client.js"
+  },
+  "scripts": {
+    "example:env": "node examples/environment-sensor.js",
+    "example:distance": "node examples/distance-sensor.js",
+    "example:imu": "node examples/imu-sensor.js",
+    "sensor-service": "node src/services/sensor-service.js",
+    "storage-service": "node src/services/storage-service.js",
+    "module-service": "node src/services/module-service.js",
+    "generate:modules": "node scripts/generate-module-manifest.js",
+    "web:dev": "vite web",
+    "web:build": "node scripts/generate-module-manifest.js && vite build web",
+    "web:server": "node web/server-simple.js",
+    "web": "concurrently \"npm run web:server\" \"npm run web:dev\"",
+    "camera-service": "python3 src/camera-service/camera-service.py",
+    "services": "pnpm run web:build && pm2 start ecosystem.config.cjs",
+    "services:stop": "pm2 stop ecosystem.config.cjs",
+    "services:restart": "pm2 restart ecosystem.config.cjs",
+    "services:logs": "pm2 logs",
+    "services:status": "pm2 status",
+    "services:dev": "concurrently \"npm run sensor-service\" \"npm run storage-service\" \"npm run module-service\" \"npm run web:dev\"",
+    "services:dev:all": "pnpm run web:build && concurrently \"npm run sensor-service\" \"npm run storage-service\" \"npm run module-service\" \"npm run web:server\"",
+    "test:py": "pytest test/hardware-manager/ -v",
+    "test:py:cov": "pytest test/hardware-manager/ --cov=src/hardware_manager --cov-report=html --cov-report=term",
+    "test:js": "node --test test/**/*.test.js",
+    "test": "pnpm run test:py && pnpm run test:js",
+    "test:watch": "node --test --watch test/**/*.test.js",
+    "test:coverage": "pnpm run test:py:cov && node --test --experimental-test-coverage test/**/*.test.js",
+    "validate": "node scripts/validate.js",
+    "lint": "eslint src test"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "keywords": [
+    "crowpi3",
+    "raspberry-pi",
+    "sensors",
+    "iot",
+    "hardware"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "lit": "^3.0.0",
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1",
+    "socket.io-client": "^4.6.1",
+    "sql.js": "^1.10.2",
+    "http-proxy-middleware": "^2.0.6",
+    "chart.js": "^4.4.1",
+    "chartjs-adapter-date-fns": "^3.0.0",
+    "date-fns": "^3.0.0",
+    "pm2": "^5.3.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.0.0",
+    "vite": "^5.0.0",
+    "sass-embedded": "^1.69.0",
+    "concurrently": "^8.2.2"
+  }
+}

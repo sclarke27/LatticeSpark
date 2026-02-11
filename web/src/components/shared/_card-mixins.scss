@@ -1,0 +1,355 @@
+// ============================================
+// Card Design Token Mixins
+// Cards @include these mixins to consume design
+// tokens. Default theme uses mixin $fallback
+// params; retro themes override via tokens.
+// ============================================
+
+// ── Screen / Display Element ──
+// Used by: chart-container, lcd-preview, segment-preview, matrix-grid, stream-container
+@mixin screen-element($bg: transparent, $border-width: 0, $border-color: transparent, $radius: 0, $shadow: none) {
+  background: var(--screen-bg, #{$bg});
+  border-width: var(--screen-border-width, #{$border-width});
+  border-style: solid;
+  border-color: var(--screen-border-color, #{$border-color});
+  border-top-color: var(--screen-border-top-color, var(--screen-border-color, #{$border-color}));
+  border-left-color: var(--screen-border-left-color, var(--screen-border-color, #{$border-color}));
+  border-right-color: var(--screen-border-right-color, var(--screen-border-color, #{$border-color}));
+  border-bottom-color: var(--screen-border-bottom-color, var(--screen-border-color, #{$border-color}));
+  border-radius: var(--screen-radius, #{$radius});
+  box-shadow: var(--screen-shadow, #{$shadow});
+  position: relative;
+
+  // Scanline / pixel-grid overlay
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--screen-overlay, none);
+    pointer-events: none;
+    z-index: 3;
+    border-radius: inherit;
+  }
+
+  // Glare / reflection
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--screen-reflection, none);
+    pointer-events: none;
+    z-index: 4;
+    border-radius: inherit;
+  }
+}
+
+// Screen text (for text content inside screen elements)
+@mixin screen-text($fallback-font: var(--font-mono), $fallback-size: 1.1rem, $fallback-color: inherit, $fallback-shadow: none) {
+  font-family: var(--screen-text-font, #{$fallback-font});
+  font-size: var(--screen-text-size, #{$fallback-size});
+  color: var(--screen-text-color, #{$fallback-color});
+  text-shadow: var(--screen-text-shadow, #{$fallback-shadow});
+}
+
+// ── Primary Button ──
+// Used by: toggle buttons (vibration/relay/buzzer), send buttons, fill buttons
+@mixin btn-primary($fallback-padding: 0.5rem 1rem, $fallback-radius: 4px, $fallback-border: 1px solid var(--border)) {
+  background: var(--btn-primary-bg, var(--bg-secondary));
+  color: var(--btn-primary-color, var(--text-secondary));
+  border: var(--btn-primary-border, #{$fallback-border});
+  border-radius: var(--btn-primary-radius, #{$fallback-radius});
+  box-shadow: var(--btn-primary-shadow, none);
+  font-family: var(--btn-primary-font, inherit);
+  font-size: var(--btn-primary-size, 0.8rem);
+  font-weight: var(--btn-primary-weight, 600);
+  padding: var(--btn-primary-padding, #{$fallback-padding});
+  letter-spacing: var(--btn-primary-spacing, normal);
+  text-transform: var(--btn-primary-text-transform, none);
+  width: var(--btn-primary-width, auto);
+  height: var(--btn-primary-height, auto);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, border-color 0.2s;
+
+  &:active {
+    box-shadow: var(--btn-primary-shadow-active, none);
+    transform: var(--btn-primary-transform-active, none);
+  }
+}
+
+@mixin btn-primary-on {
+  background: var(--btn-primary-bg-on, var(--accent));
+  color: var(--btn-primary-color-on, white);
+  border: var(--btn-primary-border-on, var(--btn-primary-border, 1px solid var(--accent)));
+  box-shadow: var(--btn-primary-shadow-on, var(--btn-primary-shadow, none));
+}
+
+// ── Secondary Button ──
+// Used by: preset buttons, action buttons, processor toggles
+@mixin btn-secondary($fallback-padding: 0.5rem 1rem, $fallback-radius: 4px, $fallback-border: 1px solid var(--border)) {
+  background: var(--btn-secondary-bg, var(--bg-secondary));
+  color: var(--btn-secondary-color, var(--text-primary));
+  border: var(--btn-secondary-border, #{$fallback-border});
+  border-radius: var(--btn-secondary-radius, #{$fallback-radius});
+  box-shadow: var(--btn-secondary-shadow, none);
+  font-family: var(--btn-secondary-font, inherit);
+  font-size: var(--btn-secondary-size, 0.85rem);
+  font-weight: var(--btn-secondary-weight, 500);
+  padding: var(--btn-secondary-padding, #{$fallback-padding});
+  letter-spacing: var(--btn-secondary-spacing, normal);
+  text-transform: var(--btn-secondary-text-transform, none);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+
+  &:active {
+    box-shadow: var(--btn-secondary-shadow-active, none);
+    transform: var(--btn-secondary-transform-active, none);
+  }
+}
+
+@mixin btn-secondary-active {
+  background: var(--btn-secondary-bg-active, var(--accent));
+  color: var(--btn-secondary-color-active, white);
+  border-color: var(--btn-secondary-bg-active, var(--accent));
+}
+
+// ── Tertiary Button ──
+// Used by: home/stop buttons (stepper), backlight toggle, colon button
+@mixin btn-tertiary($fallback-padding: 0.4rem 0.75rem, $fallback-radius: 4px, $fallback-border: 1px solid var(--border)) {
+  background: var(--btn-tertiary-bg, var(--bg-secondary));
+  color: var(--btn-tertiary-color, var(--text-secondary));
+  border: var(--btn-tertiary-border, #{$fallback-border});
+  border-radius: var(--btn-tertiary-radius, #{$fallback-radius});
+  box-shadow: var(--btn-tertiary-shadow, none);
+  font-family: var(--btn-tertiary-font, inherit);
+  font-size: var(--btn-tertiary-size, 0.8rem);
+  font-weight: var(--btn-tertiary-weight, 500);
+  padding: var(--btn-tertiary-padding, #{$fallback-padding});
+  letter-spacing: var(--btn-tertiary-spacing, normal);
+  text-transform: var(--btn-tertiary-text-transform, none);
+  width: var(--btn-tertiary-width, auto);
+  height: var(--btn-tertiary-height, auto);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  &:active {
+    box-shadow: var(--btn-tertiary-shadow-active, none);
+    transform: var(--btn-tertiary-transform-active, none);
+  }
+}
+
+@mixin btn-tertiary-on {
+  background: var(--btn-tertiary-bg-on, rgba(74, 255, 74, 0.15));
+  color: var(--btn-tertiary-color-on, #4aff4a);
+  border-color: var(--btn-tertiary-bg-on, rgba(74, 255, 74, 0.3));
+}
+
+// ── Tab Bar ──
+@mixin tab-bar {
+  display: flex;
+  gap: 0;
+  background: var(--tab-bar-bg, none);
+  border-bottom: var(--tab-bar-border, 1px solid var(--border));
+  flex-shrink: 0;
+}
+
+@mixin tab-item {
+  flex: 1;
+  padding: var(--tab-padding, 0.5rem 1rem);
+  font-family: var(--tab-font, inherit);
+  font-size: var(--tab-size, 0.8rem);
+  font-weight: var(--tab-weight, 600);
+  color: var(--tab-color, var(--text-secondary));
+  letter-spacing: var(--tab-spacing, normal);
+  text-transform: var(--tab-transform, none);
+  text-shadow: var(--tab-shadow, none);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-right: var(--tab-divider, none);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+  position: relative;
+
+  &:last-child { border-right: none; }
+
+  &:hover {
+    background: var(--tab-hover-bg, transparent);
+    color: var(--text-primary);
+  }
+}
+
+@mixin tab-item-active {
+  background: var(--tab-active-bg, transparent);
+  color: var(--tab-active-color, var(--accent));
+  border-bottom-color: var(--tab-active-border, var(--accent));
+  box-shadow: var(--tab-active-shadow, none);
+
+  // Game Boy-style active indicator (underline glow)
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 15%;
+    right: 15%;
+    height: 2px;
+    background: var(--tab-active-indicator-bg, transparent);
+    box-shadow: var(--tab-active-indicator-shadow, none);
+  }
+}
+
+// ── Display Label ──
+@mixin display-label($fallback-size: 0.8rem) {
+  font-family: var(--label-font, inherit);
+  font-size: var(--label-size, #{$fallback-size});
+  font-weight: var(--label-weight, 500);
+  color: var(--label-color, var(--text-secondary));
+  letter-spacing: var(--label-spacing, normal);
+  text-transform: var(--label-transform, none);
+  text-shadow: var(--label-shadow, none);
+}
+
+// ── Display Value ──
+@mixin display-value($fallback-size: 1.5rem) {
+  font-family: var(--value-font, var(--font-mono));
+  font-size: var(--value-size, #{$fallback-size});
+  font-weight: 700;
+  color: var(--value-color, var(--accent));
+  text-shadow: var(--value-shadow, none);
+  line-height: 1;
+}
+
+@mixin display-value-sm($fallback-size: 1.1rem) {
+  font-family: var(--value-font, var(--font-mono));
+  font-size: var(--value-size-sm, #{$fallback-size});
+  color: var(--value-color, var(--accent));
+  text-shadow: var(--value-shadow, none);
+}
+
+@mixin display-value-lg($fallback-size: 2rem) {
+  font-family: var(--value-font, var(--font-mono));
+  font-size: var(--value-size-lg, #{$fallback-size});
+  font-weight: 700;
+  color: var(--value-color, var(--accent));
+  text-shadow: var(--value-shadow, none);
+}
+
+@mixin display-unit($fallback-size: 0.875rem) {
+  font-family: var(--value-unit-font, var(--font-mono));
+  font-size: var(--value-unit-size, #{$fallback-size});
+  color: var(--value-unit-color, var(--text-secondary));
+}
+
+// ── Text Input ──
+@mixin text-input($fallback-bg: var(--bg-secondary), $fallback-size: 0.85rem) {
+  background: var(--input-bg, #{$fallback-bg});
+  border: var(--input-border, 1px solid var(--border));
+  border-radius: var(--input-radius, 4px);
+  color: var(--input-color, var(--text-primary));
+  font-family: var(--input-font, var(--font-mono));
+  font-size: var(--input-size, #{$fallback-size});
+  padding: var(--input-padding, 0.4rem 0.5rem);
+  box-shadow: var(--input-shadow, none);
+  outline: none;
+
+  &:focus {
+    border-color: var(--input-focus-border, var(--accent));
+  }
+}
+
+// ── Range Slider ──
+@mixin range-slider {
+  width: 100%;
+  height: 6px;
+  appearance: none;
+  background: var(--slider-bg, var(--bg-secondary));
+  border: var(--slider-border, none);
+  border-top-color: var(--slider-border-top-color, inherit);
+  border-left-color: var(--slider-border-left-color, inherit);
+  border-right-color: var(--slider-border-right-color, inherit);
+  border-bottom-color: var(--slider-border-bottom-color, inherit);
+  border-radius: var(--slider-radius, 3px);
+  box-shadow: var(--slider-shadow, none);
+  outline: none;
+  cursor: pointer;
+}
+
+@mixin slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--slider-thumb-bg, var(--accent));
+  border: var(--slider-thumb-border, 2px solid var(--bg-card));
+  box-shadow: var(--slider-thumb-shadow, none);
+  cursor: pointer;
+}
+
+// ── Icon / Indicator Element ──
+// Used by: motor-icon (vibration), relay-icon, buzzer-icon
+@mixin icon-element($fallback-size: 48px) {
+  width: var(--icon-size, #{$fallback-size});
+  height: var(--icon-size, #{$fallback-size});
+  border-radius: 50%;
+  background: var(--icon-bg, var(--bg-secondary));
+  border: var(--icon-border, 2px solid var(--border));
+  box-shadow: var(--icon-shadow, none);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+
+@mixin icon-element-active {
+  border-color: var(--icon-active-border-color, var(--accent));
+  background: var(--icon-active-bg, var(--icon-bg, var(--bg-secondary)));
+  box-shadow: var(--icon-active-shadow, var(--icon-shadow, none));
+}
+
+// ── Button Indicator (buttons-card) ──
+@mixin indicator-circle {
+  width: var(--indicator-size, 48px);
+  height: var(--indicator-size, 48px);
+  border-radius: 50%;
+  background: var(--indicator-bg, var(--bg-secondary));
+  border: var(--indicator-border, 3px solid var(--border));
+  box-shadow: var(--indicator-shadow, none);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+
+@mixin indicator-circle-active {
+  border-color: var(--indicator-active-border-color, var(--accent));
+  background: var(--indicator-active-bg, rgba(99, 102, 241, 0.15));
+  box-shadow: var(--indicator-active-shadow, 0 0 12px rgba(99, 102, 241, 0.4));
+}
+
+@mixin indicator-num {
+  font-size: var(--indicator-num-size, 1.1rem);
+  font-family: var(--indicator-num-font, inherit);
+  font-weight: 700;
+  color: var(--indicator-num-color, var(--text-secondary));
+  transition: color 0.2s;
+}
+
+@mixin indicator-num-active {
+  color: var(--indicator-num-active-color, var(--accent));
+}
+
+@mixin indicator-label {
+  font-size: var(--indicator-label-size, 0.9rem);
+  font-family: var(--indicator-label-font, inherit);
+  font-weight: 500;
+  color: var(--text-secondary);
+  letter-spacing: var(--indicator-label-spacing, normal);
+  text-transform: var(--indicator-label-transform, none);
+  text-shadow: var(--indicator-label-shadow, none);
+  text-align: center;
+}

@@ -1,0 +1,124 @@
+// Shared base styles for all dashboard cards.
+// Import in each card: @use '../shared/card-base';
+// Retro themes override via CSS custom property tokens set in
+// styles/themes/*.scss — no per-theme blocks needed here.
+
+:host {
+  display: block;
+  height: 100%;
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top-color: var(--card-border-top-color, var(--border));
+  border-left-color: var(--card-border-left-color, var(--border));
+  border-radius: var(--card-radius);
+  padding: var(--card-padding);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  aspect-ratio: 1;
+  opacity: var(--card-initial-opacity, 1);
+  animation: var(--card-animation, none);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--card-header-bg);
+  border-bottom: var(--card-header-border, none);
+  padding: var(--card-header-padding, 0);
+  margin-bottom: var(--card-header-margin, 1rem);
+  flex-shrink: 0;
+}
+
+.card-title {
+  font-family: var(--card-title-font, inherit);
+  font-size: var(--card-title-size, 1rem);
+  font-weight: var(--card-title-weight, 600);
+  color: var(--text-primary);
+  letter-spacing: var(--card-title-spacing, normal);
+  text-transform: var(--card-title-transform, none);
+  text-shadow: var(--card-title-shadow, none);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-type {
+  font-family: var(--card-type-font, inherit);
+  font-size: var(--card-type-size, 0.75rem);
+  font-weight: var(--card-type-weight, 400);
+  color: var(--card-type-color, var(--text-secondary));
+  background: var(--card-type-bg, var(--bg-secondary));
+  padding: var(--card-type-padding, 0.25rem 0.5rem);
+  border-radius: var(--card-type-radius, 4px);
+  letter-spacing: var(--card-type-spacing, normal);
+  flex-shrink: 0;
+}
+
+.card-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: var(--card-body-padding, 0);
+  overflow: hidden;
+}
+
+.no-data {
+  font-family: var(--card-no-data-font, inherit);
+  font-size: var(--card-no-data-size, 0.875rem);
+  color: var(--card-no-data-color, var(--text-secondary));
+  text-align: center;
+  padding: 1rem 0;
+}
+
+.timestamp {
+  font-family: var(--card-timestamp-font, inherit);
+  font-size: var(--card-timestamp-size, 0.75rem);
+  color: var(--card-timestamp-color, var(--text-secondary));
+  text-shadow: var(--card-timestamp-shadow, none);
+  text-align: right;
+  margin-top: auto;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  display: none;
+
+  &.fresh {
+    color: var(--success);
+  }
+
+  &.stale {
+    color: var(--warning);
+  }
+
+  &.old {
+    color: var(--error);
+  }
+}
+
+@media (max-width: 639px) {
+  .card {
+    padding: var(--card-padding);
+    border-radius: var(--card-radius);
+  }
+
+  .card-header {
+    margin-bottom: var(--card-header-margin, 0.5rem);
+  }
+}
+
+// Both keyframe animations always defined.
+// --card-animation token selects which plays (or none for default).
+@keyframes module-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes gb-pop-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}

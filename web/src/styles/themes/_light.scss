@@ -1,0 +1,51 @@
+// ============================================
+// LIGHT THEME — Clean, bright palette
+// Overrides the dark :root defaults with light
+// values. Uses default chrome (simple header).
+// ============================================
+
+[data-theme="light"] {
+  /* Surface colors */
+  --bg-primary: #f5f5f7;
+  --bg-secondary: #e8e8ec;
+  --bg-card: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-recessed: #ededf0;
+  --surface-deep: #e0e0e4;
+
+  /* Text */
+  --text-primary: #1a1a1a;
+  --text-secondary: #6b6b6b;
+  --text-emboss: transparent;
+
+  /* Accent — darkened for light-bg contrast */
+  --accent: #00a88a;
+  --accent-dim: #cceee6;
+  --accent-glow: rgba(0, 168, 138, 0.15);
+
+  /* Accent alt */
+  --accent-alt: #d98f00;
+  --accent-alt-dim: #fff0cc;
+  --accent-alt-glow: rgba(217, 143, 0, 0.15);
+
+  /* Borders */
+  --border: #d0d0d4;
+  --border-light: #e0e0e4;
+  --border-dark: #c0c0c4;
+
+  /* Status */
+  --success: #00b876;
+  --warning: #d98f00;
+  --error: #e03838;
+
+  /* Trim / decoration */
+  --trim-color: #d0d0d4;
+  --trim-highlight: #e0e0e4;
+
+  /* Card */
+  --card-header-bg: transparent;
+
+  /* Component overrides for light-bg readability */
+  --btn-tertiary-bg-on: rgba(0, 168, 138, 0.12);
+  --btn-tertiary-color-on: #008a6e;
+}

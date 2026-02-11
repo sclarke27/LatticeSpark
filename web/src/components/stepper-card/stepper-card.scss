@@ -1,0 +1,97 @@
+@use '../shared/card-base';
+@use '../shared/card-mixins' as m;
+
+.card-body {
+  gap: var(--card-body-gap, 0.5rem);
+  align-items: center;
+  justify-content: center;
+}
+
+.gauge-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.gauge {
+  width: 140px;
+  height: auto;
+}
+
+.angle-display {
+  @include m.display-value;
+  margin-top: -0.25rem;
+}
+
+.status-indicator {
+  @include m.display-label(0.75rem);
+  transition: color 0.2s;
+
+  &.active {
+    color: var(--accent);
+    font-weight: 600;
+  }
+}
+
+.presets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+}
+
+.preset-row {
+  display: flex;
+  gap: 0.35rem;
+  justify-content: center;
+}
+
+.preset-btn {
+  @include m.btn-secondary(0.3rem 0.55rem, 4px);
+  flex: 1;
+  text-align: center;
+}
+
+.home-btn {
+  @include m.btn-tertiary(0.3rem 0.55rem, 4px);
+  background: var(--btn-tertiary-bg-on, var(--accent));
+  color: var(--btn-tertiary-color-on, white);
+  border-color: var(--btn-tertiary-bg-on, var(--accent));
+  flex: 1;
+  text-align: center;
+}
+
+.stop-btn {
+  @include m.btn-tertiary(0.3rem 0.55rem, 4px);
+  background: var(--btn-tertiary-bg, #c0392b);
+  color: white;
+  border-color: #c0392b;
+  flex: 1;
+  text-align: center;
+}
+
+// Pulsing center dot when stepping
+.pulse {
+  animation: pulse-glow 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes pulse-glow {
+  from { opacity: 1; }
+  to { opacity: 0.4; }
+}
+
+@media (max-width: 639px) {
+  .gauge {
+    width: 110px;
+  }
+
+  .angle-display {
+    font-size: var(--value-size, 1.25rem);
+  }
+
+  .preset-btn {
+    font-size: var(--btn-secondary-size, 0.65rem);
+    padding: var(--btn-secondary-padding, 0.25rem 0.4rem);
+  }
+}

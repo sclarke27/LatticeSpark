@@ -1,0 +1,89 @@
+{
+  "services": {
+    "sensor": {
+      "port": 3000,
+      "description": "Real-time sensor polling and WebSocket streaming",
+      "endpoints": {
+        "rest": "http://localhost:3000",
+        "websocket": "ws://localhost:3000"
+      },
+      "features": [
+        "Polls sensors at configured rates",
+        "WebSocket real-time streaming",
+        "REST API for current readings",
+        "Pushes data to Storage Service"
+      ]
+    },
+    "storage": {
+      "port": 3001,
+      "description": "Historical sensor data storage and queries",
+      "endpoints": {
+        "rest": "http://localhost:3001"
+      },
+      "database": {
+        "type": "sqlite",
+        "path": "data/sensors.db"
+      },
+      "retention": {
+        "hours": 24,
+        "description": "Automatically delete data older than 24 hours"
+      },
+      "features": [
+        "SQLite database storage",
+        "REST API for historical queries",
+        "Automatic retention policy",
+        "Configurable time range queries"
+      ]
+    },
+    "module": {
+      "port": 3002,
+      "description": "Module runtime and management service",
+      "endpoints": {
+        "rest": "http://localhost:3002",
+        "websocket": "ws://localhost:3002"
+      },
+      "websocketPath": "/modules-io",
+      "features": [
+        "Discovers and loads user modules",
+        "Runs module logic (interval + onChange triggers)",
+        "REST API for module management",
+        "WebSocket for module state to UI"
+      ]
+    },
+    "web": {
+      "port": 8080,
+      "description": "Static file server and API proxy",
+      "endpoints": {
+        "http": "http://localhost:8080"
+      },
+      "proxies": {
+        "/api/sensors/*": "sensor-service:3000",
+        "/api/history/*": "storage-service:3001",
+        "/ws": "sensor-service:3000"
+      },
+      "features": [
+        "Serves Vite-built UI",
+        "Proxies API requests",
+        "Proxies WebSocket connections",
+        "SPA fallback routing"
+      ]
+    }
+  },
+  "environment": {
+    "SENSOR_SERVICE_PORT": "3000",
+    "STORAGE_SERVICE_PORT": "3001",
+    "MODULE_SERVICE_PORT": "3002",
+    "STORAGE_SERVICE_URL": "http://localhost:3001",
+    "DB_PATH": "data/sensors.db",
+    "RETENTION_HOURS": "24",
+    "PORT": "8080"
+  },
+  "commands": {
+    "start_all": "npm run services",
+    "start_all_dev": "npm run services:dev",
+    "start_sensor_service": "npm run sensor-service",
+    "start_storage_service": "npm run storage-service",
+    "start_module_service": "npm run module-service",
+    "start_web_server": "npm run web:server"
+  }
+}

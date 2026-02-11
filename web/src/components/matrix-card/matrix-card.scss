@@ -1,0 +1,133 @@
+@use '../shared/card-base';
+@use '../shared/card-mixins' as m;
+
+.card-header {
+  margin-bottom: 0;
+}
+
+.card-body {
+  gap: var(--card-body-gap, 0.75rem);
+}
+
+/* Tabs */
+.tabs {
+  @include m.tab-bar;
+}
+
+.tab {
+  @include m.tab-item;
+
+  &.active {
+    @include m.tab-item-active;
+  }
+}
+
+.tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Grid */
+.matrix-grid {
+  @include m.screen-element(#000, 2px, #333, 4px);
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  gap: 2px;
+  aspect-ratio: 1;
+  max-width: 150px;
+  margin: 0 auto;
+  padding: 3px;
+  width: 100%;
+}
+
+.pixel {
+  aspect-ratio: 1;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: transform 0.1s;
+  min-width: 0;
+  min-height: 0;
+
+  &:hover {
+    transform: scale(1.15);
+    z-index: 1;
+  }
+
+  &:active {
+    transform: scale(0.9);
+  }
+}
+
+/* Controls */
+.control-label {
+  @include m.display-label(0.75rem);
+}
+
+.color-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.color-picker {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  background: none;
+
+  &::-webkit-color-swatch-wrapper {
+    padding: 2px;
+  }
+
+  &::-webkit-color-swatch {
+    border: 1px solid #555;
+    border-radius: 3px;
+  }
+}
+
+.action-btn {
+  @include m.btn-primary(0.35rem 0.75rem, 4px);
+}
+
+.fill-btn {
+  background: var(--btn-primary-bg, var(--accent));
+  color: var(--btn-primary-color, white);
+}
+
+.clear-btn {
+  @include m.btn-secondary(0.35rem 0.75rem, 4px);
+}
+
+/* Presets tab */
+.preset-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.preset-btn {
+  @include m.btn-secondary(0.5rem 1rem, 6px);
+  text-transform: capitalize;
+
+  &.active {
+    @include m.btn-secondary-active;
+  }
+}
+
+.preset-clear {
+  align-self: flex-start;
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 639px) {
+  .matrix-grid {
+    max-width: 220px;
+  }
+}
