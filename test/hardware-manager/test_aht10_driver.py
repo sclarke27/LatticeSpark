@@ -49,7 +49,7 @@ class TestAHT10DriverInitialization:
         # Assert
         assert driver._initialized is True
         mock_board.I2C.assert_called_once()
-        mock_ahtx0.AHTx0.assert_called_once_with(mock_i2c)
+        mock_ahtx0.AHTx0.assert_called_once_with(mock_i2c, address=0x38)
 
     @patch('drivers.aht10_driver.board')
     @patch('drivers.aht10_driver.adafruit_ahtx0')
@@ -142,7 +142,7 @@ class TestAHT10DriverReading:
 
     @patch('drivers.aht10_driver.board')
     @patch('drivers.aht10_driver.adafruit_ahtx0')
-    @patch('drivers.aht10_driver.time')
+    @patch('drivers.base_driver.time')
     def test_read_minimum_interval(self, mock_time, mock_ahtx0, mock_board):
         """Test that reads respect minimum interval."""
         # Arrange

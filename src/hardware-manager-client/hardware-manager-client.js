@@ -377,6 +377,15 @@ export class HardwareManagerClient extends EventEmitter {
    *
    * Stops the process and cleans up resources.
    */
+  /**
+   * Check if the hardware manager is ready.
+   *
+   * @returns {boolean} True if ready to accept requests
+   */
+  isReady() {
+    return this.#isReady;
+  }
+
   cleanup() {
     // Mark as intentional shutdown — suppress auto-restart
     this.#shuttingDown = true;

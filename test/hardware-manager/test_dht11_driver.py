@@ -67,7 +67,9 @@ class TestDHT11DriverInitialization:
         with pytest.raises(RuntimeError, match="not responding"):
             driver.initialize()
 
-    def test_missing_pin_configuration(self):
+    @patch('drivers.dht11_driver.board')
+    @patch('drivers.dht11_driver.adafruit_dht')
+    def test_missing_pin_configuration(self, mock_dht, mock_board):
         """Test error when pin configuration is missing."""
         # Arrange
         config = {'retries': 3}  # Missing 'pins' key

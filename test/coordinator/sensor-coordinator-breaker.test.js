@@ -22,6 +22,7 @@ describe('SensorCoordinator - Circuit Breaker', () => {
       read: mock.fn(async () => ({ temperature: 25, humidity: 60 })),
       write: mock.fn(async () => ({ status: 'ok' })),
       cleanup: mock.fn(),
+      removeAllListeners: mock.fn(),
     };
   });
 
