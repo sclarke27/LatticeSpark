@@ -1,0 +1,233 @@
+// SNES theme — dashboard chrome styling.
+// Soft grey plastic shell with rainbow stripes,
+// power LED, embossed dividers, purple accents.
+// Imported by latticespark-dashboard.scss.
+
+:host([theme="snes"]) {
+  background: var(--bg-card);
+  background-image: var(--chrome-bg);
+
+  // Soft plastic texture overlay
+  &::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--chrome-texture);
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  .header { display: none; }
+
+  .container {
+    flex: 1;
+    padding: 0;
+    overflow-y: auto;
+  }
+
+  .sensors-grid {
+    --tile-columns: 5;
+    grid-template-columns: repeat(var(--tile-columns), 1fr);
+    grid-auto-rows: auto;
+    gap: var(--chrome-grid-gap);
+    padding: 2px;
+    background: var(--chrome-grid-bg);
+    justify-content: stretch;
+
+    > * {
+      width: auto;
+      height: auto;
+    }
+  }
+
+  @media (max-width: 1200px) { .sensors-grid { --tile-columns: 4; } }
+  @media (max-width: 900px) { .sensors-grid { --tile-columns: 3; } }
+  @media (max-width: 600px) { .sensors-grid { --tile-columns: 2; } }
+}
+
+// SNES top bar
+:host([theme="snes"]) .chrome-top-bar {
+  background: linear-gradient(180deg, var(--surface-raised), var(--bg-card));
+  padding: 0;
+  position: relative;
+  flex-direction: column;
+
+  // Rainbow stripe — SNES controller cable colors (top)
+  &::before {
+    content: '';
+    display: block;
+    height: 4px;
+    background: linear-gradient(90deg,
+      #cc2244 0%, #cc2244 25%,
+      #ddaa00 25%, #ddaa00 50%,
+      #22aa44 50%, #22aa44 75%,
+      #2266cc 75%, #2266cc 100%
+    );
+  }
+
+  // Bottom rainbow stripe
+  &::after {
+    content: '';
+    display: block;
+    height: 4px;
+    background: linear-gradient(90deg,
+      #cc2244 0%, #cc2244 25%,
+      #ddaa00 25%, #ddaa00 50%,
+      #22aa44 50%, #22aa44 75%,
+      #2266cc 75%, #2266cc 100%
+    );
+    order: 10;
+  }
+}
+
+// Inner wrapper for brand + right section
+:host([theme="snes"]) .chrome-top-bar > .chrome-brand,
+:host([theme="snes"]) .chrome-top-bar > .chrome-right {
+  padding-top: 0;
+}
+
+// Re-lay top bar as column with inner row
+:host([theme="snes"]) .chrome-top-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+
+  > .chrome-brand,
+  > .chrome-right {
+    padding: 10px 28px 8px;
+  }
+}
+
+:host([theme="snes"]) .chrome-title {
+  font-family: var(--font-label);
+  font-weight: 900;
+  font-size: 18px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--border-dark);
+  text-shadow: 0 1px 0 rgba(255,255,255,0.5);
+}
+
+:host([theme="snes"]) .chrome-badge {
+  font-family: var(--font-label);
+  font-size: 7px;
+  font-weight: 800;
+  color: white;
+  background: linear-gradient(135deg, var(--snes-purple), var(--snes-purple-light));
+  padding: 2px 10px;
+  border-radius: 8px;
+  letter-spacing: 2px;
+  box-shadow: 0 1px 3px var(--snes-purple-glow);
+}
+
+:host([theme="snes"]) .chrome-power {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+:host([theme="snes"]) .chrome-power-led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #ff5555, #cc1111);
+  box-shadow: 0 0 6px rgba(255,0,0,0.5);
+  border: 1px solid var(--border);
+  animation: snes-led-blink 2.5s ease-in-out infinite;
+}
+
+@keyframes snes-led-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+:host([theme="snes"]) .chrome-power-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+:host([theme="snes"]) .chrome-clock {
+  background: #0c0c14;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--success);
+  text-shadow: 0 0 4px rgba(68,204,68,0.4);
+  letter-spacing: 1px;
+  box-shadow: inset 0 1px 4px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.3);
+}
+
+:host([theme="snes"]) .chrome-led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+
+  &.on-green {
+    background: radial-gradient(circle at 40% 35%, #66ee77, #33bb44);
+    box-shadow: 0 0 5px rgba(51,187,68,0.5);
+  }
+
+  &.on-amber {
+    background: radial-gradient(circle at 40% 35%, #eecc44, #cc9911);
+    box-shadow: 0 0 5px rgba(204,153,17,0.4);
+    animation: snes-led-blink 2.5s ease-in-out infinite;
+  }
+
+  &.on-red {
+    background: radial-gradient(circle at 40% 35%, #ee5555, #cc2222);
+    box-shadow: 0 0 5px rgba(204,34,34,0.4);
+  }
+
+  &.off {
+    background: radial-gradient(circle at 40% 35%, var(--border), var(--border-dark));
+  }
+}
+
+:host([theme="snes"]) .chrome-status-label {
+  font-family: var(--font-label);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+
+  &.offline { color: var(--error); }
+  &.reconnecting { color: var(--warning); }
+}
+
+// Embossed divider strip
+:host([theme="snes"]) .chrome-strip {
+  height: 3px;
+  background: linear-gradient(180deg, var(--border), var(--border-light));
+  border-top: 1px solid var(--border-dark);
+  border-bottom: 1px solid rgba(255,255,255,0.2);
+}
+
+// Bottom bar
+:host([theme="snes"]) .chrome-bottom-bar {
+  background: linear-gradient(180deg, var(--bg-card), var(--border-light));
+  border-top: 1px solid var(--border);
+  padding: 6px 28px;
+}
+
+:host([theme="snes"]) .chrome-bottom-text {
+  font-family: var(--font-label);
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--border-dark);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.3);
+
+  &:last-child {
+    color: var(--snes-purple);
+  }
+}

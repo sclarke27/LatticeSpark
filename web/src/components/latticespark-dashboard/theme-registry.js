@@ -30,6 +30,16 @@ export const themes = {
     bezelStrip: true,
     bottomLeft: 'LatticeSpark \u00B7 Elecrow',
     bottomRight: 'GAME BOY EDITION',
+  },
+  snes: {
+    label: 'SNES',
+    brandTitle: 'LatticeSpark',
+    modelBadge: 'SUPER',
+    powerLed: true,
+    showClock: true,
+    bezelStrip: true,
+    bottomLeft: 'LatticeSpark \u00B7 Elecrow',
+    bottomRight: '\u2605 SUPER EDITION \u2605',
   }
 };
 
