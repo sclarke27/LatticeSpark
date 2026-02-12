@@ -1,0 +1,268 @@
+// ============================================
+// SNES THEME — Super Nintendo (PAL/JP)
+// Soft grey plastic shell with purple accents,
+// ABXY button colors, CRT scanline screens.
+// ============================================
+
+[data-theme="snes"] {
+  /* ── Palette ── */
+  --bg-primary: #8a8694;
+  --bg-secondary: #dddae3;
+  --bg-card: #d0cdd6;
+  --surface-raised: #dddae3;
+  --surface-recessed: #0c0c14;
+  --surface-deep: #0c0c14;
+
+  --text-primary: #8a8694;
+  --text-secondary: #7a7684;
+  --text-emboss: rgba(255,255,255,0.4);
+
+  --accent: #00bbcc;
+  --accent-dim: #006677;
+  --accent-glow: rgba(0,187,204,0.3);
+
+  --accent-alt: #eeaa22;
+  --accent-alt-dim: #997711;
+  --accent-alt-glow: rgba(238,170,34,0.3);
+
+  --border: #a8a4b0;
+  --border-light: #c0bcc8;
+  --border-dark: #8a8694;
+
+  --success: #44cc44;
+  --warning: #eeaa22;
+  --error: #dd3344;
+
+  --trim-color: #a8a4b0;
+  --trim-highlight: #c0bcc8;
+
+  /* SNES purple (used by chrome + badges) */
+  --snes-purple: #6b4c9a;
+  --snes-purple-light: #8866bb;
+  --snes-purple-dark: #4a3470;
+  --snes-purple-glow: rgba(107,76,154,0.3);
+
+  --card-radius: 6px;
+  --card-gap: 2px;
+  --card-padding: 0;
+  --card-header-bg: linear-gradient(180deg, rgba(255,255,255,0.15), transparent);
+
+  --font-body: 'Nunito', sans-serif;
+  --font-mono: 'Silkscreen', cursive;
+  --font-label: 'Exo 2', sans-serif;
+  --font-display: 'Exo 2', sans-serif;
+
+  /* ── Card Structure ── */
+  --card-header-margin: 0;
+  --card-body-padding: 6px 10px 8px;
+  --card-body-gap: 4px;
+  --card-animation: snes-pop-in 0.35s ease forwards;
+  --card-initial-opacity: 0;
+  --card-border-top-color: var(--border-light);
+  --card-border-left-color: var(--border-light);
+  --card-header-padding: 5px 10px 4px;
+  --card-header-border: 1px solid var(--border);
+  --card-title-font: var(--font-label);
+  --card-title-size: 9px;
+  --card-title-weight: 800;
+  --card-title-spacing: 1.5px;
+  --card-title-transform: uppercase;
+  --card-title-shadow: 0 1px 0 var(--text-emboss);
+  --card-type-font: var(--font-mono);
+  --card-type-size: 6px;
+  --card-type-weight: 400;
+  --card-type-color: white;
+  --card-type-bg: var(--snes-purple);
+  --card-type-padding: 1px 5px;
+  --card-type-radius: 4px;
+  --card-type-spacing: 0.5px;
+  --card-no-data-font: var(--font-mono);
+  --card-no-data-size: 9px;
+  --card-no-data-color: var(--accent-dim);
+  --card-timestamp-font: var(--font-mono);
+  --card-timestamp-size: 9px;
+  --card-timestamp-color: var(--accent-dim);
+  --card-timestamp-shadow: 0 0 4px var(--accent-glow);
+
+  /* ── Screen / Display ── */
+  --screen-bg: #0c0c14;
+  --screen-border-width: 3px;
+  --screen-border-color: var(--border);
+  --screen-border-top-color: var(--border-dark);
+  --screen-border-left-color: var(--border-dark);
+  --screen-border-right-color: var(--border-light);
+  --screen-border-bottom-color: var(--border-light);
+  --screen-radius: 6px;
+  --screen-shadow: inset 0 2px 8px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.3);
+  --screen-overlay: repeating-linear-gradient(0deg, transparent 0px, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px);
+  --screen-reflection: radial-gradient(ellipse at 30% 25%, rgba(255,255,255,0.06), transparent 65%);
+  --screen-text-font: var(--font-mono);
+  --screen-text-size: 10px;
+  --screen-text-color: var(--accent);
+  --screen-text-shadow: 0 0 4px var(--accent-glow);
+
+  /* ── Primary Button (toggle, send, fill — SNES A button red) ── */
+  --btn-primary-bg: radial-gradient(circle at 40% 35%, #ee4466, #bb1133);
+  --btn-primary-bg-on: radial-gradient(circle at 40% 35%, #ff5577, #cc2244);
+  --btn-primary-color: rgba(255,255,255,0.85);
+  --btn-primary-color-on: rgba(255,255,255,0.95);
+  --btn-primary-border: none;
+  --btn-primary-border-on: none;
+  --btn-primary-radius: 50%;
+  --btn-primary-shadow: 0 2px 0 #881122, inset 0 1px 0 rgba(255,255,255,0.25);
+  --btn-primary-shadow-on: 0 2px 0 #991133, inset 0 1px 0 rgba(255,255,255,0.25);
+  --btn-primary-shadow-active: 0 0 0 transparent, inset 0 2px 3px rgba(0,0,0,0.4);
+  --btn-primary-transform-active: translateY(1px) scale(0.95);
+  --btn-primary-font: var(--font-label);
+  --btn-primary-size: 8px;
+  --btn-primary-weight: 900;
+  --btn-primary-padding: 0;
+  --btn-primary-spacing: 0;
+  --btn-primary-text-transform: none;
+  --btn-primary-width: 22px;
+  --btn-primary-height: 22px;
+
+  /* ── Secondary Button (presets, actions — SNES X button blue) ── */
+  --btn-secondary-bg: radial-gradient(circle at 40% 35%, #4488ee, #2255bb);
+  --btn-secondary-bg-active: radial-gradient(circle at 40% 35%, #5599ff, #3366cc);
+  --btn-secondary-color: rgba(255,255,255,0.85);
+  --btn-secondary-color-active: white;
+  --btn-secondary-border: none;
+  --btn-secondary-radius: 50%;
+  --btn-secondary-shadow: 0 2px 0 #113388, inset 0 1px 0 rgba(255,255,255,0.25);
+  --btn-secondary-shadow-active: 0 0 0 transparent, inset 0 2px 3px rgba(0,0,0,0.4);
+  --btn-secondary-transform-active: translateY(1px) scale(0.95);
+  --btn-secondary-font: var(--font-label);
+  --btn-secondary-size: 8px;
+  --btn-secondary-weight: 900;
+  --btn-secondary-padding: 0;
+  --btn-secondary-spacing: 0;
+  --btn-secondary-text-transform: none;
+
+  /* ── Tertiary Button (home, stop — Start/Select oblong) ── */
+  --btn-tertiary-bg: linear-gradient(180deg, var(--border), var(--border-dark));
+  --btn-tertiary-bg-on: linear-gradient(180deg, #44cc66, #22aa44);
+  --btn-tertiary-color: #9a96a4;
+  --btn-tertiary-color-on: white;
+  --btn-tertiary-border: 1px solid var(--border-dark);
+  --btn-tertiary-radius: 5px;
+  --btn-tertiary-shadow: 0 1px 0 rgba(0,0,0,0.15);
+  --btn-tertiary-shadow-active: inset 0 1px 2px rgba(0,0,0,0.3);
+  --btn-tertiary-transform-active: translateY(1px);
+  --btn-tertiary-font: var(--font-label);
+  --btn-tertiary-size: 6px;
+  --btn-tertiary-weight: 800;
+  --btn-tertiary-padding: 0;
+  --btn-tertiary-spacing: 2px;
+  --btn-tertiary-text-transform: uppercase;
+  --btn-tertiary-width: auto;
+  --btn-tertiary-height: 10px;
+
+  /* ── Tab Bar (SNES shoulder-button style) ── */
+  --tab-bar-bg: var(--border-light);
+  --tab-bar-border: 1px solid var(--border);
+  --tab-font: var(--font-label);
+  --tab-size: 7px;
+  --tab-weight: 800;
+  --tab-color: var(--border-dark);
+  --tab-spacing: 1.5px;
+  --tab-transform: uppercase;
+  --tab-shadow: none;
+  --tab-padding: 4px 4px;
+  --tab-hover-bg: rgba(255,255,255,0.15);
+  --tab-active-color: var(--snes-purple);
+  --tab-active-bg: var(--bg-card);
+  --tab-active-border: transparent;
+  --tab-active-shadow: none;
+  --tab-active-indicator-bg: var(--snes-purple);
+  --tab-active-indicator-shadow: 0 0 4px var(--snes-purple-glow);
+  --tab-divider: 1px solid var(--border);
+
+  /* ── Labels ── */
+  --label-font: var(--font-label);
+  --label-size: 8px;
+  --label-weight: 700;
+  --label-color: var(--border-dark);
+  --label-spacing: 1.5px;
+  --label-transform: uppercase;
+  --label-shadow: 0 1px 0 rgba(255,255,255,0.3);
+
+  /* ── Display Values ── */
+  --value-font: var(--font-mono);
+  --value-size: 18px;
+  --value-size-sm: 12px;
+  --value-size-lg: 24px;
+  --value-color: var(--accent);
+  --value-shadow: 0 0 6px var(--accent-glow);
+  --value-unit-font: var(--font-body);
+  --value-unit-size: 9px;
+  --value-unit-color: var(--text-secondary);
+
+  /* ── Text Inputs ── */
+  --input-bg: #0c0c14;
+  --input-border: 2px solid var(--border);
+  --input-radius: 4px;
+  --input-color: var(--accent);
+  --input-font: var(--font-mono);
+  --input-size: 10px;
+  --input-padding: 5px 8px;
+  --input-shadow: inset 0 2px 5px rgba(0,0,0,0.3);
+  --input-focus-border: var(--snes-purple);
+
+  /* ── Range Sliders ── */
+  --slider-bg: #0c0c14;
+  --slider-border: 2px solid var(--border);
+  --slider-border-top-color: var(--border-dark);
+  --slider-border-left-color: var(--border-dark);
+  --slider-border-right-color: var(--border-light);
+  --slider-border-bottom-color: var(--border-light);
+  --slider-radius: 4px;
+  --slider-shadow: inset 0 1px 3px rgba(0,0,0,0.3);
+  --slider-thumb-bg: var(--border-light);
+  --slider-thumb-border: 1px solid var(--border-dark);
+  --slider-thumb-shadow: 0 1px 0 rgba(0,0,0,0.3);
+
+  /* ── Icon / Indicator ── */
+  --icon-size: 44px;
+  --icon-bg: radial-gradient(circle at 40% 35%, var(--surface-raised), var(--border) 70%);
+  --icon-border: 2px solid var(--border);
+  --icon-shadow: 0 2px 4px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.3);
+  --icon-active-border-color: var(--snes-purple);
+  --icon-active-bg: none;
+  --icon-active-shadow: 0 2px 4px rgba(0,0,0,0.3), 0 0 8px var(--snes-purple-glow);
+
+  /* ── Button Indicator (buttons-card circles) ── */
+  --indicator-size: 36px;
+  --indicator-bg: linear-gradient(180deg, var(--border-light), var(--border));
+  --indicator-border: 2px solid var(--border-dark);
+  --indicator-shadow: 0 2px 0 rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.2);
+  --indicator-active-border-color: var(--snes-purple);
+  --indicator-active-bg: var(--snes-purple-glow);
+  --indicator-active-shadow: 0 0 8px var(--snes-purple-glow);
+  --indicator-num-size: 8px;
+  --indicator-num-font: var(--font-label);
+  --indicator-num-color: var(--border-dark);
+  --indicator-num-active-color: white;
+  --indicator-label-size: 7px;
+  --indicator-label-font: var(--font-label);
+  --indicator-label-spacing: 1.5px;
+  --indicator-label-transform: uppercase;
+  --indicator-label-shadow: 0 1px 0 var(--text-emboss);
+
+  /* ── Chrome (dashboard shell) ── */
+  --chrome-bg: radial-gradient(ellipse at 35% 20%, rgba(255,255,255,0.18), transparent 55%), radial-gradient(ellipse at 65% 80%, rgba(0,0,0,0.04), transparent 50%);
+  --chrome-texture: url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='rgba(0,0,0,0.015)'/%3E%3C/svg%3E");
+  --chrome-grid-gap: 2px;
+  --chrome-grid-bg: var(--border);
+  --chrome-grid-padding: 2px;
+  --chrome-select-bg: #0c0c14;
+  --chrome-select-border: 2px solid var(--border);
+  --chrome-select-color: var(--success);
+  --chrome-select-font: var(--font-mono);
+  --chrome-select-size: 11px;
+  --chrome-select-spacing: 1px;
+  --chrome-select-transform: none;
+  --chrome-select-shadow: inset 0 1px 4px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.3);
+  --chrome-select-radius: 6px;
+  --chrome-select-padding: 2px 12px;
+}
