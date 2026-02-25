@@ -26,6 +26,10 @@
 import { EventEmitter } from 'events';
 import { readFile } from 'fs/promises';
 import { createHardwareManagerClient } from '../hardware-manager-client/hardware-manager-client.js';
+import { CircuitBreaker } from '../utils/circuit-breaker.js';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('sensor-coordinator');
 
 /**
  * Sensor Coordinator
@@ -99,7 +103,7 @@ export class SensorCoordinator extends EventEmitter {
     // Step 3: Register and initialize components
     for (const [componentId, componentDef] of Object.entries(componentConfig)) {
       if (componentDef.enabled === false) {
-        console.log(`Skipping disabled component: ${componentId}`);
+        log.info({ componentId }, 'Skipping disabled component');
         continue;
       }
       await this.#registerComponent(componentId, componentDef);
@@ -160,7 +164,7 @@ export class SensorCoordinator extends EventEmitter {
 
       this.emit('component:ready', { componentId, type });
     } catch (error) {
-      console.error(`Failed to initialize ${componentId}:`, error.message);
+      log.error({ componentId, err: error }, 'Failed to initialize component');
       this.emit('component:error', { componentId, error });
       // Don't re-throw - skip failed components and continue with others
     }
@@ -197,30 +201,27 @@ export class SensorCoordinator extends EventEmitter {
     }
 
     // Circuit breaker check
+    if (!this.#circuitBreakers.has(componentId)) {
+      this.#circuitBreakers.set(componentId, new CircuitBreaker({
+        threshold: SensorCoordinator.BREAKER_THRESHOLD,
+        cooldownMs: SensorCoordinator.BREAKER_COOLDOWN,
+        maxCooldownMs: SensorCoordinator.BREAKER_MAX_COOLDOWN
+      }));
+    }
     const breaker = this.#circuitBreakers.get(componentId);
-    if (breaker && breaker.failures >= SensorCoordinator.BREAKER_THRESHOLD) {
-      const cooldown = Math.min(
-        SensorCoordinator.BREAKER_COOLDOWN * Math.pow(2, (breaker.opens || 1) - 1),
-        SensorCoordinator.BREAKER_MAX_COOLDOWN
-      );
-      const elapsed = Date.now() - breaker.lastFailure;
-      if (elapsed < cooldown) {
-        // Still in cooldown - reject without hitting hardware
-        throw new Error(`Circuit open for ${componentId} (${Math.ceil((cooldown - elapsed) / 1000)}s remaining)`);
-      }
-      // Cooldown elapsed - allow one attempt (half-open)
+    const { allowed, reason } = breaker.allowRequest();
+    if (!allowed) {
+      throw new Error(`Circuit open for ${componentId} (${reason})`);
     }
 
     try {
       const data = await this.#hwClient.read(componentId);
 
       // Success - reset breaker
-      if (breaker) {
-        if (breaker.failures >= SensorCoordinator.BREAKER_THRESHOLD) {
-          console.log(`Circuit closed for ${componentId} (recovered)`);
-          this.emit('component:circuit-close', { componentId });
-        }
-        this.#circuitBreakers.delete(componentId);
+      const { wasOpen } = breaker.recordSuccess();
+      if (wasOpen) {
+        log.info({ componentId }, 'Circuit closed (recovered)');
+        this.emit('component:circuit-close', { componentId });
       }
 
       this.emit('component:data', {
@@ -231,20 +232,10 @@ export class SensorCoordinator extends EventEmitter {
 
       return data;
     } catch (error) {
-      // Track failure
-      const current = this.#circuitBreakers.get(componentId) || { failures: 0 };
-      current.failures++;
-      current.lastFailure = Date.now();
-      this.#circuitBreakers.set(componentId, current);
-
-      if (current.failures >= SensorCoordinator.BREAKER_THRESHOLD) {
-        current.opens = (current.opens || 0) + 1;
-        const cooldown = Math.min(
-          SensorCoordinator.BREAKER_COOLDOWN * Math.pow(2, current.opens - 1),
-          SensorCoordinator.BREAKER_MAX_COOLDOWN
-        );
-        console.error(`Circuit opened for ${componentId} after ${current.failures} failures (cooldown: ${cooldown / 1000}s)`);
-        this.emit('component:circuit-open', { componentId, failures: current.failures, cooldown });
+      const { tripped, failures } = breaker.recordFailure();
+      if (tripped) {
+        log.error({ componentId, failures }, 'Circuit opened');
+        this.emit('component:circuit-open', { componentId, failures });
       }
 
       this.emit('component:error', { componentId, error });

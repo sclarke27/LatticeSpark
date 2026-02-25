@@ -1,188 +1,253 @@
 # LatticeSpark Services Architecture
 
-Five microservices managed by PM2 in production. All services auto-restart with exponential backoff.
+Core services are managed by PM2 in production, with optional federation services (`fleet-service`, `spoke-agent-service`) for hub/spoke mode.
 
 ## Architecture
 
-```
-┌─────────────────┐
-│  Web Browser    │
-│  (Port 8080)    │
-└────────┬────────┘
-         │ HTTP / WebSocket
-         v
-┌─────────────────┐
-│  Web Server     │  ← Proxy + static files (no business logic)
-│  (Port 8080)    │
-└──┬──────┬───┬───┘
-   │      │   │
-   │      │   └─────────────────────┐
-   │      │                         │
-   │ /api/sensors/*      /api/history/*    /api/modules/*
-   v                     v                 v
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│Sensor Service│─▶│Storage       │  │Module Service │
-│ (Port 3000)  │  │Service       │  │ (Port 3002)  │
-│              │  │ (Port 3001)  │  │              │
-│ Coordinator  │  │ SQLite DB    │  │ Module loader │
-│ Polling      │  │ Retention    │  │ REST + WS    │
-│ WebSocket    │  │ Historical   │  │ State mgmt   │
-│ Camera proxy │  │ Aggregation  │  │              │
-└──────┬───────┘  └──────────────┘  └──────────────┘
-       │
-       v
-┌──────────────┐   ┌──────────────┐
-│Hardware Mgr  │   │Camera Service│
-│  (Python)    │   │ (Port 8081)  │
-│  JSON-RPC    │   │ Python       │
-│  Drivers     │   │ MJPEG + ML   │
-└──────────────┘   └──────────────┘
+```text
+Web Browser (8080)
+  -> Web Server (8080) [proxy + static]
+    -> Sensor Service (3000)
+    -> Storage Service (3001)
+    -> Module Service (3002)
+    -> Fleet Service (3010, hub only)
+    -> Camera Service (8081)
 ```
 
 ## Services
 
 ### Sensor Service (Port 3000)
 
-Real-time sensor management and the main hub for hardware access.
+Real-time sensor management and the main hardware data hub.
 
-**Endpoints:**
-- `GET /api/sensors` — List all registered sensors
-- `GET /api/sensors/:id/read` — Read current value
-- `GET /health` — Service health check
+Responsibilities:
+- Polls configured components from `config/components.json`
+- Reads Arduino serial JSON-lines from `config/arduino-sources.json`
+- Broadcasts data via WebSocket (`sensor:data`, `sensor:batch`)
+- Exposes REST reads
+- Pushes readings to storage-service
+- On hub role, merges relayed spoke data into canonical IDs
 
-**WebSocket events (server to client):**
-- `sensors` — List of available sensors
-- `sensor:data` — Real-time sensor reading
-- `sensor:error` — Sensor error
-- `sensor:batch` — Batch of readings (used by module-service)
+Endpoints:
+- `GET /api/sensors`
+- `GET /api/sensors/:id/read`
+- `POST /api/components`
+- `POST /api/arduino/sources/:sourceId/pause`
+- `POST /api/arduino/sources/:sourceId/resume`
+- `POST /api/relay/spokes/:nodeId/components` (hub)
+- `POST /api/relay/spokes/:nodeId/batch` (hub)
+- `POST /api/relay/spokes/:nodeId/offline` (hub)
+- `GET /health`
 
-**WebSocket events (client to server):**
-- `component:write` — Write data to an output component
+WebSocket events (server -> client):
+- `components`
+- `sensor:data`
+- `sensor:error`
+- `sensor:batch`
 
-**Polling rates:**
+WebSocket events (client -> server):
+- `component:write`
+
+Polling defaults:
 - `distance`, `motion`, `proximity`: 100ms
 - All others: 5000ms
-- Storage pushes throttled to every 2s per sensor
+- Storage pushes throttled to every 2s per component
+
+Feature toggles:
+- `LATTICESPARK_ENABLE_ARDUINO_INGEST` (default `true`)
 
 ### Storage Service (Port 3001)
 
 SQLite time-series storage with automatic cleanup.
 
-**Endpoints:**
-- `POST /api/data` — Store sensor reading (from sensor-service)
-- `GET /api/history/:sensorId` — Query historical data (`?metric=&start=&end=&limit=`)
-- `GET /api/sensors` — List sensors with stored data
-- `GET /api/sensors/:sensorId/metrics` — Available metrics for a sensor
-- `GET /health` — Service health and stats
+Endpoints:
+- `POST /api/data`
+- `GET /api/history/:sensorId`
+- `GET /api/sensors`
+- `GET /api/sensors/:sensorId/metrics`
+- `GET /health`
 
-**Configuration:**
+Configuration:
 - `STORAGE_SERVICE_PORT` (default: 3001)
 - `DB_PATH` (default: `data/sensors.db`)
 - `RETENTION_HOURS` (default: 24)
 
 ### Module Service (Port 3002)
 
-Manages the lifecycle of user modules. Connects to sensor-service via Socket.IO to receive sensor data and relay write commands.
+Manages module lifecycle. Connects to sensor-service via Socket.IO to receive sensor data and relay writes.
 
-**REST endpoints:**
-- `GET /api/modules` — List all modules and their status
-- `POST /api/modules/:id/enable` — Enable and start a module
-- `POST /api/modules/:id/disable` — Stop and disable a module
-- `POST /api/modules/:id/restart` — Restart a module
+REST endpoints:
+- `GET /api/modules`
+- `POST /api/modules/:id/enable`
+- `POST /api/modules/:id/disable`
+- `POST /api/modules/:id/restart`
+- `POST /api/modules/rescan`
 
-**Socket.IO namespace (`/modules-io`):**
-- `module:state` — Module pushes state to UI pages
-- `module:command` — UI page sends command to module
+Socket.IO namespace (`/modules-io`):
+- `module:state`
+- `module:command`
 
 ### Camera Service (Port 8081)
 
-Standalone Python service for USB camera capture, MJPEG streaming, and ML-based detection (face, motion).
+Standalone Python service for USB camera capture, MJPEG stream, and optional ML processors.
 
-**Endpoints:**
-- `GET /stream` — MJPEG video stream
-- `GET /snapshot` — Single JPEG frame
-- `GET /health` — Service health
-- `GET /events` — SSE stream of detection events
-- `POST /processors/:name/enable` — Enable an ML processor
-- `POST /processors/:name/disable` — Disable an ML processor
+Endpoints:
+- `GET /stream`
+- `GET /snapshot`
+- `GET /health`
+- `GET /events`
+- `POST /processors/:name/enable`
+- `POST /processors/:name/disable`
 
-Camera POST endpoints require `X-API-Key` header when `LATTICESPARK_API_KEY` is set.
+Camera POST endpoints require `X-API-Key` when `LATTICESPARK_API_KEY` is set.
 
 ### Web Server (Port 8080)
 
-Serves Vite-built static files and proxies API/WebSocket requests to backend services.
+Serves built web assets and proxies API/WebSocket requests to backend services.
 
-**Proxy rules:**
-- `/api/sensors/*` → Sensor Service (3000)
-- `/api/history/*`, `/api/data` → Storage Service (3001)
-- `/api/modules/*` → Module Service (3002)
-- `/api/camera/*` → Camera Service (8081)
-- WebSocket → Sensor Service (3000)
-- `/modules-io` → Module Service (3002)
+Proxy rules:
+- `/api/sensors/*` -> sensor-service (3000)
+- `/api/history/*`, `/api/data` -> storage-service (3001)
+- `/api/modules/*` -> module-service (3002)
+- `/api/camera/*` -> camera-service (8081)
+- `/api/spokes/*`, `/api/module-bundles*`, `/api/firmware/*` -> fleet-service (3010)
+- WebSocket -> sensor-service (3000)
+- `/modules-io` -> module-service (3002)
 
-**Special endpoints:**
-- `GET /api/config` — Returns API key for dashboard authentication
+Special endpoint:
+- `GET /api/config`
+
+## Federation Services
+
+For full install/config steps, see [Hub/Spoke Setup Guide](../../HUB_SPOKE_SETUP.md).
+For a minimal single-hub/single-spoke runbook, see [Hub/Spoke Quick Start](../../HUB_SPOKE_QUICKSTART.md).
+For scripted firmware helpers, see `scripts/firmware-*.sh`.
+
+### Fleet Service (Port 3010)
+
+Hub-only control plane for connected spokes.
+
+Endpoints:
+- `GET /api/spokes`
+- `GET /api/spokes/:nodeId/components`
+- `GET /api/spokes/:nodeId/modules`
+- `POST /api/spokes/:nodeId/modules/:moduleId/:action` (`enable|disable|restart`)
+- `POST /api/module-bundles`
+- `POST /api/spokes/:nodeId/modules/deploy`
+- `POST /api/firmware/bundles`
+- `GET /api/firmware/bundles`
+- `POST /api/spokes/:nodeId/firmware/deploy`
+- `GET /api/spokes/:nodeId/firmware/jobs/:jobId`
+- `POST /api/spokes/:nodeId/firmware/rollback`
+
+### Spoke Agent Service
+
+Spoke-side process that:
+- Relays local `sensor:batch` updates from sensor-service to fleet-service
+- Maintains disk-backed replay queue
+- Executes hub commands for remote writes
+- Handles module bundle deploy and firmware deploy/rollback orchestration
+- Does not ingest Arduino serial data directly
 
 ## Data Flow
 
-### Real-Time Updates
+### Real-time updates
 
-1. Sensor Service polls sensor at configured interval
-2. Sensor Service broadcasts `sensor:data` via WebSocket
-3. Sensor Service POSTs reading to Storage Service
-4. Storage Service stores in SQLite
-5. Web UI receives real-time update via WebSocket
+1. Sensor-service polls local components and ingests local Arduino sources.
+2. Sensor-service emits `sensor:data` and `sensor:batch` over WebSocket.
+3. Sensor-service pushes readings to storage-service.
+4. Storage-service persists readings in SQLite.
+5. Web UI and module-service consume live updates.
 
-### Module Interaction
+### Module interaction
 
-1. Module Service connects to Sensor Service WebSocket
-2. Sensor data forwarded to running modules via `ModuleContext`
-3. Modules call `this.ctx.write()` which emits `component:write` to sensor-service
-4. Sensor Coordinator routes write to Hardware Manager via JSON-RPC
-5. Module pushes state to UI via `emitState()` over Socket.IO
+1. Module-service connects to sensor-service WebSocket.
+2. Sensor data is forwarded to running modules via `ModuleContext`.
+3. Modules call `this.ctx.write()`, which emits `component:write` to sensor-service.
+4. Sensor coordinator routes write commands to hardware-manager.
+5. Modules push UI state through `/modules-io`.
 
-### Historical Queries
+### Hub/spoke relay
 
-1. Web UI requests `/api/history/:sensorId?metric=&start=&end=`
-2. Web Server proxies to Storage Service
-3. Storage Service queries SQLite
-4. Returns time-series data for chart rendering
+1. Spoke sensor-service produces batches from both native components and Arduino mappings.
+2. Spoke-agent relays those batches to fleet-service with sequence numbers.
+3. Hub ACKs, spoke replays on reconnect.
+4. Hub sensor-service stores relayed data under canonical IDs: `<nodeId>.<componentId>`.
+
+### Firmware deploy coordination
+
+1. Hub triggers firmware deploy through fleet-service.
+2. Spoke-agent pauses target Arduino source in sensor-service.
+3. Spoke-agent executes `avrdude` flash/verify.
+4. Spoke-agent resumes sensor-service ingest and reports job status/logs.
 
 ## Running
 
 ```bash
 # Production (PM2)
-pnpm run services          # Build web + start all
-pnpm run services:stop     # Stop all
-pnpm run services:restart  # Restart all
-pnpm run services:logs     # Tail logs
-pnpm run services:status   # Process status
+pnpm run services
+pnpm run services:stop
+pnpm run services:restart
+pnpm run services:logs
+pnpm run services:status
 
 # Development
-pnpm run services:dev      # Services + Vite HMR
-pnpm run services:dev:all  # Services + pre-built web
+pnpm run services:dev
+pnpm run services:dev:all
 
 # Individual services
 pnpm run sensor-service
 pnpm run storage-service
 pnpm run module-service
+pnpm run fleet-service
+pnpm run spoke-agent-service
 pnpm run camera-service
 pnpm run web:server
 ```
 
+### PM2 Service Toggles
+
+`ecosystem.config.cjs` supports env toggles (default `true`) to include/exclude services on startup:
+
+- `LATTICESPARK_ENABLE_SENSOR_SERVICE`
+- `LATTICESPARK_ENABLE_STORAGE_SERVICE`
+- `LATTICESPARK_ENABLE_MODULE_SERVICE`
+- `LATTICESPARK_ENABLE_CAMERA_SERVICE`
+- `LATTICESPARK_ENABLE_WEB_SERVER`
+- `LATTICESPARK_ENABLE_FLEET_SERVICE`
+- `LATTICESPARK_ENABLE_SPOKE_AGENT_SERVICE`
+
+Set any toggle to `false`/`0`/`off` to disable that process.
+
 ## Configuration Files
 
-- [config/components.json](../../config/components.json) — Sensor and actuator configuration
-- [ecosystem.config.cjs](../../ecosystem.config.cjs) — PM2 process configuration
+- [config/components.json](../../config/components.json) - Sensor and actuator configuration
+- [config/cluster.json](../../config/cluster.json) - Hub/spoke role, node identity, replay limits
+- [config/arduino-sources.json](../../config/arduino-sources.json) - Arduino source mapping consumed by sensor-service
+- [ecosystem.config.cjs](../../ecosystem.config.cjs) - PM2 process configuration
 
 ## Troubleshooting
 
-**Services won't start**: Check ports 3000, 3001, 3002, 8080, 8081 are available.
+Services will not start:
+- Check ports 3000, 3001, 3002, 3010, 8080, 8081.
 
-**WebSocket not connecting**: Ensure sensor-service is running on port 3000.
+WebSocket not connecting:
+- Ensure sensor-service is running on port 3000.
 
-**No historical data**: Check storage-service logs. Verify `data/` directory is writable.
+No historical data:
+- Check storage-service logs.
+- Verify `data/` is writable.
 
-**Modules not loading**: Check module-service logs. Ensure `module.json` is valid JSON and module ID is kebab-case with a hyphen.
+No Arduino data:
+- Check `config/arduino-sources.json` and `enabled: true`.
+- Verify serial port exists and permissions are correct.
+- Confirm Arduino emits JSON lines with `values`.
+- Check sensor-service logs for parse/port warnings.
 
-**Camera not working**: Camera-service is a slow-starting Python process. Give it 10-15 seconds after PM2 start. Check `pm2 logs camera-service`.
+Modules not loading:
+- Check module-service logs.
+- Ensure `module.json` is valid and module ID is kebab-case with a hyphen.
+
+Camera not working:
+- camera-service can take 10-15 seconds after startup.
+- Check `pm2 logs camera-service`.

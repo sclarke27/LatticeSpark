@@ -6,6 +6,14 @@
   overflow-y: auto;
 }
 
+h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
 .empty {
   text-align: center;
   color: var(--text-secondary);
@@ -141,4 +149,92 @@
 
 .btn-view {
   @include m.btn-secondary;
+}
+
+.fleet-section {
+  margin-top: 1.5rem;
+}
+
+.fleet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.fleet-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius, 8px);
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.field-label {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.field-input {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 4px;
+  padding: 0.35rem 0.45rem;
+  font-size: 0.78rem;
+}
+
+.spoke-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+.spoke-job {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.panel-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.remote-module-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.module-chip {
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+
+.btn-primary {
+  @include m.btn-primary;
+}
+
+.btn-secondary {
+  @include m.btn-secondary;
+}
+
+.fleet-error {
+  margin-bottom: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--status-error, #c44);
 }

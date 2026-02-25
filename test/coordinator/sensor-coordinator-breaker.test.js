@@ -116,16 +116,16 @@ describe('SensorCoordinator - Circuit Breaker', () => {
       return { temperature: 25 };
     });
 
+    // Shorten cooldown for test speed (must be set before first read creates the breaker)
+    const originalCooldown = SensorCoordinator.BREAKER_COOLDOWN;
+    SensorCoordinator.BREAKER_COOLDOWN = 10;
+
     const coord = await createCoordinatorWithSensor();
 
     // Open the circuit
     for (let i = 0; i < SensorCoordinator.BREAKER_THRESHOLD; i++) {
       await assert.rejects(() => coord.read('test-sensor'));
     }
-
-    // Shorten cooldown for test speed
-    const originalCooldown = SensorCoordinator.BREAKER_COOLDOWN;
-    SensorCoordinator.BREAKER_COOLDOWN = 10;
 
     // Wait for cooldown
     await new Promise(resolve => setTimeout(resolve, 20));

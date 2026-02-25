@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(git mv:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(node -e \"const fs = require\\(''fs''\\); const path = require\\(''path''\\); const dir = ''examples''; fs.readdirSync\\(dir\\).filter\\(f => f.endsWith\\(''.js''\\)\\).forEach\\(f => { const fp = path.join\\(dir, f\\); let content = fs.readFileSync\\(fp, ''utf8''\\); if \\(content.includes\\(''CrowPi3 Framework''\\)\\) { content = content.replace\\(/CrowPi3 Framework/g, ''LatticeSpark Framework''\\); fs.writeFileSync\\(fp, content\\); console.log\\(''Updated:'', f\\); } }\\);\")",
+      "Bash(where:*)",
+      "Bash(powershell -File:*)",
+      "Bash(git -C c:developmentcrowpi3 status)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(wsl -e bash -c:*)",
+      "Bash(pnpm run test:js:*)",
+      "Bash(wsl -e bash -lc:*)",
+      "Bash(wsl -e bash -ic:*)",
+      "Bash(wsl ls:*)",
+      "Bash(echo:*)",
+      "Bash(node --version:*)",
+      "Bash(wsl bash:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh:*)",
+      "Bash(cmd.exe:*)",
+      "Bash(gh.exe:*)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" --version)",
+      "Bash(git push:*)",
+      "Bash(node --test:*)",
+      "Bash(cmd /c \"node --test test/utils/timeout.test.js\")",
+      "Bash(pnpm add:*)",
+      "Bash(c:/development/latticeSpark/web/src)"
+    ]
+  }
+}

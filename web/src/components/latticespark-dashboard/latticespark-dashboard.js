@@ -26,7 +26,15 @@ export class LatticeSparkDashboard extends LitElement {
     activeView: { type: String },
     allModules: { type: Array },
     modulePages: { type: Array },
-    moduleStates: { type: Object }
+    moduleStates: { type: Object },
+    spokes: { type: Array },
+    moduleBundles: { type: Array },
+    firmwareBundles: { type: Array },
+    fleetError: { type: String },
+    fleetJobs: { type: Object },
+    spokeModules: { type: Object },
+    localNodeId: { type: String },
+    localRole: { type: String }
   };
 
   static styles = unsafeCSS(styles);
@@ -43,10 +51,19 @@ export class LatticeSparkDashboard extends LitElement {
     this.allModules = [];
     this.modulePages = [];
     this.moduleStates = {};
+    this.spokes = [];
+    this.moduleBundles = [];
+    this.firmwareBundles = [];
+    this.fleetError = '';
+    this.fleetJobs = {};
+    this.spokeModules = {};
+    this.localNodeId = 'local';
+    this.localRole = 'standalone';
     this.socket = null;
     this.moduleSocket = null;
     this._apiKey = null;
     this._clockInterval = null;
+    this._fleetPollInterval = null;
     this._writeHandler = (e) => {
       if (this.socket?.connected) {
         this.socket.emit('component:write', e.detail);
@@ -83,6 +100,70 @@ export class LatticeSparkDashboard extends LitElement {
       loadModulePage(moduleId);
       this.activeView = moduleId;
     };
+    this._spokeModuleActionHandler = async (e) => {
+      const { nodeId, moduleId, action } = e.detail;
+      try {
+        await fetch(`/api/spokes/${encodeURIComponent(nodeId)}/modules/${encodeURIComponent(moduleId)}/${encodeURIComponent(action)}`, {
+          method: 'POST'
+        });
+        await this.refreshFleetData();
+      } catch (err) {
+        console.error(`[dashboard] Spoke module action failed (${nodeId}/${moduleId}/${action}):`, err.message);
+      }
+    };
+    this._moduleDeployHandler = async (e) => {
+      const { nodeId, bundleId, version } = e.detail;
+      try {
+        await fetch(`/api/spokes/${encodeURIComponent(nodeId)}/modules/deploy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bundleId, version })
+        });
+        await this.refreshFleetData();
+      } catch (err) {
+        console.error(`[dashboard] Module deploy failed (${nodeId}):`, err.message);
+      }
+    };
+    this._firmwareDeployHandler = async (e) => {
+      const { nodeId, bundleId, version, sourceId } = e.detail;
+      try {
+        const resp = await fetch(`/api/spokes/${encodeURIComponent(nodeId)}/firmware/deploy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bundleId, version, sourceId })
+        });
+        const payload = await resp.json().catch(() => ({}));
+        if (payload?.job?.jobId) {
+          this.fleetJobs = { ...this.fleetJobs, [nodeId]: payload.job };
+        }
+        await this.refreshFleetData();
+      } catch (err) {
+        console.error(`[dashboard] Firmware deploy failed (${nodeId}):`, err.message);
+      }
+    };
+    this._firmwareRollbackHandler = async (e) => {
+      const { nodeId, sourceId } = e.detail;
+      try {
+        const resp = await fetch(`/api/spokes/${encodeURIComponent(nodeId)}/firmware/rollback`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sourceId })
+        });
+        const payload = await resp.json().catch(() => ({}));
+        this.fleetJobs = {
+          ...this.fleetJobs,
+          [nodeId]: {
+            ...(this.fleetJobs[nodeId] || {}),
+            status: payload?.error ? 'failed' : 'requested',
+            detail: payload?.error || 'Rollback requested',
+            updatedAt: Date.now()
+          }
+        };
+        await this.refreshFleetData();
+      } catch (err) {
+        console.error(`[dashboard] Firmware rollback failed (${nodeId}):`, err.message);
+      }
+    };
   }
 
   connectedCallback() {
@@ -95,6 +176,10 @@ export class LatticeSparkDashboard extends LitElement {
     this.addEventListener('module-command', this._moduleCommandHandler);
     this.addEventListener('module-action', this._moduleActionHandler);
     this.addEventListener('module-navigate', this._moduleNavigateHandler);
+    this.addEventListener('spoke-module-action', this._spokeModuleActionHandler);
+    this.addEventListener('module-deploy', this._moduleDeployHandler);
+    this.addEventListener('firmware-deploy', this._firmwareDeployHandler);
+    this.addEventListener('firmware-rollback', this._firmwareRollbackHandler);
     this._startClock();
   }
 
@@ -103,9 +188,28 @@ export class LatticeSparkDashboard extends LitElement {
       const resp = await fetch('/api/config');
       const config = await resp.json();
       this._apiKey = config.apiKey || null;
+      this.localNodeId = typeof config.nodeId === 'string' && config.nodeId.trim()
+        ? config.nodeId.trim()
+        : 'local';
+      this.localRole = typeof config.role === 'string' && config.role.trim()
+        ? config.role.trim()
+        : 'standalone';
     } catch {
       // Dev mode or config unavailable — connect without auth
       this._apiKey = null;
+      this.localNodeId = 'local';
+      this.localRole = 'standalone';
+    }
+    if (this.localRole === 'hub') {
+      this.startFleetPolling();
+    } else {
+      this.stopFleetPolling();
+      this.spokes = [];
+      this.moduleBundles = [];
+      this.firmwareBundles = [];
+      this.fleetJobs = {};
+      this.spokeModules = {};
+      this.fleetError = '';
     }
     this.connectSocket();
     this.connectModuleSocket();
@@ -119,6 +223,11 @@ export class LatticeSparkDashboard extends LitElement {
     this.removeEventListener('module-command', this._moduleCommandHandler);
     this.removeEventListener('module-action', this._moduleActionHandler);
     this.removeEventListener('module-navigate', this._moduleNavigateHandler);
+    this.removeEventListener('spoke-module-action', this._spokeModuleActionHandler);
+    this.removeEventListener('module-deploy', this._moduleDeployHandler);
+    this.removeEventListener('firmware-deploy', this._firmwareDeployHandler);
+    this.removeEventListener('firmware-rollback', this._firmwareRollbackHandler);
+    this.stopFleetPolling();
     if (this.socket) {
       this.socket.off('connect');
       this.socket.off('disconnect');
@@ -163,6 +272,94 @@ export class LatticeSparkDashboard extends LitElement {
 
   _updateClock() {
     this.clockTime = new Date().toTimeString().split(' ')[0];
+  }
+
+  startFleetPolling() {
+    if (this.localRole !== 'hub') return;
+    if (this._fleetPollInterval) return;
+    this.refreshFleetData();
+    this._fleetPollInterval = setInterval(() => {
+      this.refreshFleetData();
+    }, 10000);
+  }
+
+  stopFleetPolling() {
+    if (this._fleetPollInterval) {
+      clearInterval(this._fleetPollInterval);
+      this._fleetPollInterval = null;
+    }
+  }
+
+  async refreshFleetData() {
+    if (this.localRole !== 'hub') {
+      this.spokes = [];
+      this.moduleBundles = [];
+      this.firmwareBundles = [];
+      this.spokeModules = {};
+      this.fleetJobs = {};
+      this.fleetError = '';
+      return;
+    }
+    try {
+      const [spokesResp, moduleBundlesResp, firmwareBundlesResp] = await Promise.all([
+        fetch('/api/spokes'),
+        fetch('/api/module-bundles'),
+        fetch('/api/firmware/bundles')
+      ]);
+
+      if (spokesResp.ok) {
+        const data = await spokesResp.json();
+        this.spokes = Array.isArray(data?.spokes) ? data.spokes : [];
+        const moduleResults = await Promise.all(this.spokes.map(async (spoke) => {
+          try {
+            const resp = await fetch(`/api/spokes/${encodeURIComponent(spoke.nodeId)}/modules`);
+            if (!resp.ok) return [spoke.nodeId, []];
+            const payload = await resp.json();
+            return [spoke.nodeId, Array.isArray(payload?.modules) ? payload.modules : []];
+          } catch {
+            return [spoke.nodeId, []];
+          }
+        }));
+        this.spokeModules = Object.fromEntries(moduleResults);
+      } else {
+        this.spokes = [];
+        this.spokeModules = {};
+      }
+
+      if (moduleBundlesResp.ok) {
+        const data = await moduleBundlesResp.json();
+        this.moduleBundles = Array.isArray(data?.bundles) ? data.bundles : [];
+      }
+
+      if (firmwareBundlesResp.ok) {
+        const data = await firmwareBundlesResp.json();
+        this.firmwareBundles = Array.isArray(data?.bundles) ? data.bundles : [];
+      }
+
+      const jobEntries = Object.entries(this.fleetJobs || {});
+      if (jobEntries.length > 0) {
+        const updates = await Promise.all(jobEntries.map(async ([nodeId, job]) => {
+          if (!job?.jobId) return [nodeId, job];
+          try {
+            const resp = await fetch(`/api/spokes/${encodeURIComponent(nodeId)}/firmware/jobs/${encodeURIComponent(job.jobId)}`);
+            if (!resp.ok) return [nodeId, job];
+            const latest = await resp.json();
+            return [nodeId, latest];
+          } catch {
+            return [nodeId, job];
+          }
+        }));
+        this.fleetJobs = Object.fromEntries(updates);
+      }
+
+      if (!spokesResp.ok && !moduleBundlesResp.ok && !firmwareBundlesResp.ok) {
+        this.fleetError = 'Fleet APIs unavailable';
+      } else {
+        this.fleetError = '';
+      }
+    } catch (err) {
+      this.fleetError = err.message;
+    }
   }
 
   connectSocket() {

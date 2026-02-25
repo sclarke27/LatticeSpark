@@ -1,18 +1,18 @@
-import { createServer } from 'node:http';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeFile, readFile, rename } from 'node:fs/promises';
-import express from 'express';
+import { readFile } from 'node:fs/promises';
 import { Server } from 'socket.io';
 import { io as ioClient } from 'socket.io-client';
 import { ModuleContext } from '../modules/module-context.js';
 import { discoverModules, validateComponentRefs, loadModuleClass } from '../modules/module-loader.js';
+import { loadClusterConfig } from '../cluster/cluster-config.js';
+import { withTimeout } from '../utils/timeout.js';
+import { atomicWriteJson } from '../utils/persistence.js';
+import { CircuitBreaker } from '../utils/circuit-breaker.js';
+import { BaseService } from './base-service.js';
+import { createLogger } from '../utils/logger.js';
 
-// Prevent unhandled promise rejections from crashing the service
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('[module-service] Unhandled promise rejection:', reason);
-});
-
+const log = createLogger('module-service');
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
 
@@ -20,6 +20,7 @@ const MODULE_SERVICE_PORT = parseInt(process.env.MODULE_SERVICE_PORT || '3002', 
 const SENSOR_SERVICE_URL = process.env.SENSOR_SERVICE_URL || 'http://localhost:3000';
 const MODULES_DIR = join(PROJECT_ROOT, 'modules');
 const STATE_DIR = join(PROJECT_ROOT, 'data', 'modules');
+const clusterConfig = loadClusterConfig();
 
 const CLEANUP_TIMEOUT = parseInt(process.env.MODULE_CLEANUP_TIMEOUT || '5000', 10);
 const INIT_TIMEOUT = parseInt(process.env.MODULE_INIT_TIMEOUT || '10000', 10);
@@ -27,16 +28,7 @@ const BREAKER_THRESHOLD = parseInt(process.env.MODULE_BREAKER_THRESHOLD || '5', 
 const BREAKER_BASE_DELAY = parseInt(process.env.MODULE_BREAKER_BASE_DELAY || '5000', 10);
 const BREAKER_MAX_DELAY = parseInt(process.env.MODULE_BREAKER_MAX_DELAY || '300000', 10);
 const BREAKER_MAX_RETRIES = parseInt(process.env.MODULE_BREAKER_MAX_RETRIES || '10', 10);
-const API_KEY = process.env.LATTICESPARK_API_KEY || '';
-
-/** Race a promise against a timeout, cleaning up the timer regardless of outcome. */
-function withTimeout(promise, ms, message) {
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(message)), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
+const API_KEY = clusterConfig.apiKey || '';
 
 // ── Module Registry ─────────────────────────────────────────────────────────
 
@@ -105,7 +97,7 @@ function onSensorBatch(batch) {
 }
 
 function onSensorError({ componentId, error }) {
-  console.warn(`[module-service] Sensor error: ${componentId} - ${error}`);
+  log.warn({ componentId }, 'Sensor error: %s', error);
 }
 
 function connectToSensorService() {
@@ -128,7 +120,7 @@ function connectToSensorService() {
     });
 
     sensorSocket.on('connect', () => {
-      console.log('[module-service] Connected to sensor-service');
+      log.info('Connected to sensor-service');
       // Resume paused module intervals on reconnect
       for (const entry of modules.values()) {
         if (entry.status === 'running' && !entry.intervalId && entry.config.triggers.interval) {
@@ -136,13 +128,13 @@ function connectToSensorService() {
             () => safeCall(entry, 'execute'),
             entry.config.triggers.interval
           );
-          console.log(`[module-service] Resumed interval for "${entry.id}"`);
+          log.info({ moduleId: entry.id }, 'Resumed interval');
         }
       }
     });
 
     sensorSocket.on('disconnect', () => {
-      console.log('[module-service] Disconnected from sensor-service, pausing module intervals');
+      log.info('Disconnected from sensor-service, pausing module intervals');
       // Pause module intervals — onSensorChange won't fire anyway (no batches)
       for (const entry of modules.values()) {
         if (entry.intervalId) {
@@ -235,7 +227,7 @@ async function startModule(entry) {
 
     // Validate component refs (warnings only — don't block startup)
     const warnings = validateComponentRefs(entry.config, components);
-    warnings.forEach(w => console.warn(`[module-service] ${entry.id}: ${w}`));
+    warnings.forEach(w => log.warn({ moduleId: entry.id }, w));
 
     await withTimeout(instance.initialize(), INIT_TIMEOUT, 'initialize() timeout');
 
@@ -249,12 +241,12 @@ async function startModule(entry) {
 
     entry.status = 'running';
     entry.breakerTrips = 0;  // Reset on successful start
-    console.log(`[module-service] Started module: ${entry.id}`);
+    log.info({ moduleId: entry.id }, 'Started module');
     broadcastModuleStatus(entry);
   } catch (err) {
     entry.status = 'error';
     entry.lastError = err.message;
-    console.error(`[module-service] Failed to start module "${entry.id}":`, err.message);
+    log.error({ moduleId: entry.id, err }, 'Failed to start module');
     broadcastModuleStatus(entry);
   }
 }
@@ -279,7 +271,7 @@ async function stopModule(entry) {
     try {
       await withTimeout(entry.instance.cleanup(), CLEANUP_TIMEOUT, 'cleanup timeout');
     } catch (err) {
-      console.warn(`[module-service] Cleanup error for "${entry.id}":`, err.message);
+      log.warn({ moduleId: entry.id, err }, 'Cleanup error');
     }
   }
 
@@ -307,13 +299,13 @@ async function safeCall(entry, method, ...args) {
   } catch (err) {
     entry.lastError = err.message;
     entry.consecutiveErrors++;
-    console.error(`[module-service] ${entry.id}.${method}() error:`, err.message);
+    log.error({ moduleId: entry.id, method, err }, 'Module method error');
 
     if (entry.consecutiveErrors >= BREAKER_THRESHOLD) {
       entry.breakerTrips++;
 
       if (entry.breakerTrips > BREAKER_MAX_RETRIES) {
-        console.error(`[module-service] Circuit breaker: permanently disabling "${entry.id}" after ${BREAKER_MAX_RETRIES} restart attempts`);
+        log.error({ moduleId: entry.id, maxRetries: BREAKER_MAX_RETRIES }, 'Circuit breaker: permanently disabling module');
         await disableModule(entry.id);
         return;
       }
@@ -322,7 +314,7 @@ async function safeCall(entry, method, ...args) {
         BREAKER_BASE_DELAY * Math.pow(2, entry.breakerTrips - 1),
         BREAKER_MAX_DELAY
       );
-      console.error(`[module-service] Circuit breaker: restarting "${entry.id}" in ${delay / 1000}s (attempt ${entry.breakerTrips}/${BREAKER_MAX_RETRIES})`);
+      log.error({ moduleId: entry.id, delaySec: delay / 1000, attempt: entry.breakerTrips, maxRetries: BREAKER_MAX_RETRIES }, 'Circuit breaker: restarting module');
       await stopModule(entry);
       entry.status = 'error';
       broadcastModuleStatus(entry);
@@ -331,11 +323,11 @@ async function safeCall(entry, method, ...args) {
         (async () => {
           entry.restartTimer = null;
           entry.consecutiveErrors = 0;
-          console.log(`[module-service] Auto-restarting "${entry.id}" (attempt ${entry.breakerTrips}/${BREAKER_MAX_RETRIES})`);
+          log.info({ moduleId: entry.id, attempt: entry.breakerTrips, maxRetries: BREAKER_MAX_RETRIES }, 'Auto-restarting module');
           await startModule(entry);
           broadcastFullModuleList();
         })().catch(err => {
-          console.error(`[module-service] Auto-restart failed for "${entry.id}":`, err.message);
+          log.error({ moduleId: entry.id, err }, 'Auto-restart failed');
         });
       }, delay);
     }
@@ -363,7 +355,7 @@ async function disableModule(moduleId) {
   await persistConfig(entry);
   broadcastModuleStatus(entry);
   broadcastFullModuleList();
-  console.log(`[module-service] Disabled module: ${moduleId}`);
+  log.info({ moduleId }, 'Disabled module');
   return { success: true };
 }
 
@@ -377,6 +369,77 @@ async function restartModule(moduleId) {
   return { success: true, status: entry.status };
 }
 
+async function rescanModules() {
+  const discovered = await discoverModules(MODULES_DIR);
+  const byId = new Map(discovered.map((m) => [m.id, m]));
+
+  let added = 0;
+  let updated = 0;
+  let removed = 0;
+
+  // Add or update discovered modules
+  for (const found of discovered) {
+    const existing = modules.get(found.id);
+
+    if (!existing) {
+      const entry = {
+        id: found.id,
+        dir: found.dir,
+        config: found.config,
+        status: found.config.enabled ? 'stopped' : 'disabled',
+        instance: null,
+        context: null,
+        intervalId: null,
+        consecutiveErrors: 0,
+        lastError: null,
+        breakerTrips: 0,
+        restartTimer: null
+      };
+      modules.set(found.id, entry);
+      added++;
+      if (entry.config.enabled) {
+        await startModule(entry);
+      }
+      continue;
+    }
+
+    const wasRunning = existing.status === 'running';
+    existing.dir = found.dir;
+    existing.config = found.config;
+    updated++;
+
+    if (!found.config.enabled && wasRunning) {
+      await stopModule(existing);
+      existing.status = 'disabled';
+    } else if (found.config.enabled && wasRunning) {
+      // Reload running modules so updated code/config takes effect after deploy.
+      await stopModule(existing);
+      existing.status = 'stopped';
+      await startModule(existing);
+    } else if (found.config.enabled && !wasRunning) {
+      existing.status = 'stopped';
+      await startModule(existing);
+    }
+  }
+
+  // Remove modules that no longer exist on disk
+  for (const [moduleId, entry] of modules.entries()) {
+    if (byId.has(moduleId)) continue;
+    await stopModule(entry);
+    modules.delete(moduleId);
+    removed++;
+  }
+
+  broadcastFullModuleList();
+  return {
+    success: true,
+    added,
+    updated,
+    removed,
+    total: modules.size
+  };
+}
+
 function broadcastFullModuleList() {
   if (!moduleIo) return;
   moduleIo.emit('modules', getModuleList());
@@ -384,12 +447,10 @@ function broadcastFullModuleList() {
 
 async function persistConfig(entry) {
   const configPath = join(entry.dir, 'module.json');
-  const tmpPath = configPath + '.tmp';
   try {
-    await writeFile(tmpPath, JSON.stringify(entry.config, null, 2) + '\n');
-    await rename(tmpPath, configPath);
+    await atomicWriteJson(configPath, entry.config);
   } catch (err) {
-    console.error(`[module-service] Failed to persist config for "${entry.id}":`, err.message);
+    log.error({ moduleId: entry.id, err }, 'Failed to persist config');
   }
 }
 
@@ -422,10 +483,7 @@ function getModuleList() {
 
 // ── Express REST API ────────────────────────────────────────────────────────
 
-function createApi() {
-  const app = express();
-  app.use(express.json());
-
+function registerRoutes(app) {
   // List all modules
   app.get('/api/modules', (req, res) => {
     res.json(getModuleList());
@@ -458,6 +516,16 @@ function createApi() {
     res.json(result);
   });
 
+  // Rescan modules directory (used by spoke-agent module deploy flow)
+  app.post('/api/modules/rescan', async (req, res) => {
+    try {
+      const result = await rescanModules();
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // Send command to module
   app.post('/api/modules/:id/command', async (req, res) => {
     const entry = modules.get(req.params.id);
@@ -475,22 +543,6 @@ function createApi() {
     }
   });
 
-  // Health check with upstream dependency verification
-  app.get('/health', (req, res) => {
-    const running = Array.from(modules.values()).filter(m => m.status === 'running').length;
-    const sensorConnected = sensorSocket?.connected ?? false;
-    const healthy = sensorConnected;
-    res.status(healthy ? 200 : 503).json({
-      status: healthy ? 'ok' : 'degraded',
-      dependencies: {
-        sensorService: sensorConnected ? 'connected' : 'disconnected'
-      },
-      modules: { total: modules.size, running },
-      uptime: process.uptime()
-    });
-  });
-
-  return app;
 }
 
 // ── Socket.IO Server ────────────────────────────────────────────────────────
@@ -511,7 +563,7 @@ function setupSocketIO(httpServer) {
   }
 
   moduleIo.on('connection', (socket) => {
-    console.log(`[module-service] UI client connected: ${socket.id}`);
+    log.info({ socketId: socket.id }, 'UI client connected');
 
     // Send current module list
     socket.emit('modules', getModuleList());
@@ -542,15 +594,30 @@ function setupSocketIO(httpServer) {
     });
 
     socket.on('disconnect', () => {
-      console.log(`[module-service] UI client disconnected: ${socket.id}`);
+      log.info({ socketId: socket.id }, 'UI client disconnected');
     });
   });
 }
 
-// ── Main ────────────────────────────────────────────────────────────────────
+// ── Service ─────────────────────────────────────────────────────────────────
 
-async function main() {
-  console.log('[module-service] Starting...');
+const service = new BaseService('module-service', { port: MODULE_SERVICE_PORT });
+
+service.registerHealthCheck(async () => {
+  const running = Array.from(modules.values()).filter(m => m.status === 'running').length;
+  const sensorConnected = sensorSocket?.connected ?? false;
+  return {
+    status: sensorConnected ? 'ok' : 'degraded',
+    dependencies: {
+      sensorService: sensorConnected ? 'connected' : 'disconnected'
+    },
+    modules: { total: modules.size, running },
+    uptime: process.uptime()
+  };
+});
+
+service.initialize = async () => {
+  log.info('Starting...');
 
   // 1. Discover modules
   const discovered = await discoverModules(MODULES_DIR);
@@ -569,17 +636,16 @@ async function main() {
       restartTimer: null
     });
   }
-  console.log(`[module-service] Discovered ${modules.size} module(s)`);
+  log.info('Discovered %d module(s)', modules.size);
 
-  // 2. Create HTTP server + Socket.IO + REST API
-  const app = createApi();
-  const httpServer = createServer(app);
-  setupSocketIO(httpServer);
+  // 2. Register REST routes + Socket.IO
+  registerRoutes(service.app);
+  setupSocketIO(service.httpServer);
 
   // 3. Connect to sensor-service (wait for components)
-  console.log('[module-service] Connecting to sensor-service...');
+  log.info('Connecting to sensor-service...');
   await connectToSensorService();
-  console.log(`[module-service] Sensor-service ready (${components.length} components)`);
+  log.info('Sensor-service ready (%d components)', components.length);
 
   // 4. Start enabled modules
   const enabledModules = Array.from(modules.values()).filter(m => m.config.enabled);
@@ -587,40 +653,20 @@ async function main() {
     await startModule(entry);
   }
 
-  // 5. Start listening
-  httpServer.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-      console.error(`[module-service] Port ${MODULE_SERVICE_PORT} already in use. Kill the old process or choose a different port.`);
-    } else {
-      console.error('[module-service] Server error:', err.message);
+  log.info('REST API: http://localhost:%d/api/modules', MODULE_SERVICE_PORT);
+  log.info('Socket.IO path: /modules-io');
+};
+
+service.onShutdown = async () => {
+  for (const entry of modules.values()) {
+    if (entry.status === 'running') {
+      await stopModule(entry);
     }
-    process.exit(1);
-  });
+  }
+  if (sensorSocket) sensorSocket.disconnect();
+};
 
-  httpServer.listen(MODULE_SERVICE_PORT, () => {
-    console.log(`[module-service] Listening on port ${MODULE_SERVICE_PORT}`);
-    console.log(`[module-service] REST API: http://localhost:${MODULE_SERVICE_PORT}/api/modules`);
-    console.log(`[module-service] Socket.IO path: /modules-io`);
-  });
-
-  // Graceful shutdown
-  const shutdown = async () => {
-    console.log('[module-service] Shutting down...');
-    for (const entry of modules.values()) {
-      if (entry.status === 'running') {
-        await stopModule(entry);
-      }
-    }
-    if (sensorSocket) sensorSocket.disconnect();
-    httpServer.close();
-    process.exit(0);
-  };
-
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
-}
-
-main().catch(err => {
-  console.error('[module-service] Fatal error:', err);
+service.start().catch(err => {
+  log.error({ err }, 'Fatal error');
   process.exit(1);
 });

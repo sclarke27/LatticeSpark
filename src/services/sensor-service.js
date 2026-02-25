@@ -9,32 +9,45 @@
  * - Pushes data to Storage Service
  */
 
-import express from 'express';
 import http from 'http';
-import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFile } from 'fs/promises';
+import { createReadStream, existsSync } from 'fs';
+import { spawnSync } from 'child_process';
+import readline from 'readline';
 import { createSensorCoordinator } from '../coordinator/sensor-coordinator.js';
 import { CameraClient } from '../camera-client/camera-client.js';
+import {
+  canonicalComponentId,
+  loadClusterConfig,
+  parseCanonicalComponentId
+} from '../cluster/cluster-config.js';
+import { withTimeout } from '../utils/timeout.js';
+import { requireApiKey as createApiKeyMiddleware } from '../utils/auth.js';
+import { normalizeNodeId } from '../utils/normalization.js';
+import { BaseService } from './base-service.js';
+import { createLogger } from '../utils/logger.js';
 
-// Prevent unhandled promise rejections from crashing the service
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('[sensor-service] Unhandled promise rejection:', reason);
-});
-
+const log = createLogger('sensor-service');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+const clusterConfig = loadClusterConfig();
+const ROLE = clusterConfig.role || 'standalone';
 const PORT = process.env.SENSOR_SERVICE_PORT || 3000;
 const STORAGE_SERVICE_URL = process.env.STORAGE_SERVICE_URL || 'http://localhost:3001';
 const CAMERA_SERVICE_URL = process.env.CAMERA_SERVICE_URL || 'http://localhost:8081';
+const FLEET_SERVICE_URL = process.env.FLEET_SERVICE_URL
+  || (ROLE === 'hub' ? 'http://localhost:3010' : (clusterConfig.hubUrl || 'http://localhost:3010'));
 const DEBUG = process.env.SENSOR_DEBUG === 'true';
-const API_KEY = process.env.LATTICESPARK_API_KEY || '';
+const API_KEY = clusterConfig.apiKey || '';
+const ENABLE_ARDUINO_INGEST = !['0', 'false', 'no', 'off', 'disabled']
+  .includes(String(process.env.LATTICESPARK_ENABLE_ARDUINO_INGEST || 'true').trim().toLowerCase());
 
-const app = express();
-const httpServer = createServer(app);
+const service = new BaseService('sensor-service', { port: PORT });
+const { app, httpServer } = service;
 const io = new Server(httpServer, {
   transports: ['websocket'],
   cors: {
@@ -51,7 +64,7 @@ if (API_KEY) {
   });
 }
 
-app.use(express.json());
+const requireApiKey = createApiKeyMiddleware(API_KEY);
 
 const READ_TIMEOUT = parseInt(process.env.READ_TIMEOUT || '5000', 10);
 
@@ -63,6 +76,14 @@ let pollingIntervals = new Map();
 let coordinatorListeners = {}; // stored so we can remove on shutdown
 const lastStoragePush = new Map(); // throttle storage writes per sensor
 const STORAGE_INTERVAL = parseInt(process.env.STORAGE_INTERVAL || '2000', 10);
+const latestDataCache = new Map(); // componentId -> latest validated data
+const remoteSpokes = new Map(); // nodeId -> { components, lastSeq, lastSeen, online }
+const remoteComponentIndex = new Map(); // canonicalId -> { nodeId, componentId, component }
+const arduinoComponentIndex = new Map(); // componentId -> component
+const arduinoReaders = new Map(); // sourceId -> { stream, rl, source }
+const pausedArduinoSources = new Set(); // sourceId
+let arduinoConfig = { sources: [] };
+let arduinoComponents = [];
 
 // Batch WebSocket emissions to reduce network traffic
 const BATCH_INTERVAL = parseInt(process.env.BATCH_INTERVAL || '100', 10);
@@ -70,39 +91,361 @@ let pendingBatch = {};
 let batchTimer = null;
 const skipStorageIds = new Set();
 
-function withTimeout(promise, ms, label) {
-  let timer;
-  return Promise.race([
-    promise.then(
-      v => { clearTimeout(timer); return v; },
-      e => { clearTimeout(timer); throw e; }
-    ),
-    new Promise((_, reject) =>
-      timer = setTimeout(() => reject(new Error(`Timeout: ${label} took longer than ${ms}ms`)), ms)
-    )
-  ]);
+function normalizeArduinoTimestamp(rawTs) {
+  const nowSec = Date.now() / 1000;
+  if (!Number.isFinite(rawTs)) {
+    return { timestamp: nowSec, timestamp_source: 'sensor_service_fallback' };
+  }
+  if (rawTs > 100000000000) {
+    return { timestamp: rawTs / 1000, timestamp_source: 'arduino' };
+  }
+  if (rawTs > 1000000000) {
+    return { timestamp: rawTs, timestamp_source: 'arduino' };
+  }
+  return { timestamp: nowSec, timestamp_source: 'sensor_service_fallback' };
+}
+
+async function loadArduinoConfig() {
+  const configPath = join(__dirname, '..', '..', 'config', 'arduino-sources.json');
+  if (!existsSync(configPath)) return { sources: [] };
+  try {
+    const raw = await readFile(configPath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed?.sources)) return { sources: [] };
+    return parsed;
+  } catch (err) {
+    log.warn({ err }, 'Failed to parse arduino config');
+    return { sources: [] };
+  }
+}
+
+function buildArduinoComponents(config) {
+  const components = [];
+  for (const source of config.sources || []) {
+    if (!source?.enabled) continue;
+    const map = source.channelMap || {};
+    for (const [fieldName, componentDef] of Object.entries(map)) {
+      if (!componentDef?.componentId) continue;
+      components.push({
+        id: componentDef.componentId,
+        type: componentDef.type || 'ArduinoFloat',
+        config: {
+          label: componentDef.label || componentDef.componentId,
+          category: componentDef.category || 'arduino',
+          pollInterval: componentDef.pollInterval || 500,
+          historyWindow: componentDef.historyWindow || 1,
+          sourceId: source.sourceId,
+          fieldName,
+          skipStorage: Boolean(componentDef.skipStorage),
+          metrics: Array.isArray(componentDef.metrics) ? componentDef.metrics : [
+            {
+              id: 'value',
+              label: 'Value',
+              type: 'single',
+              keys: ['value'],
+              unit: componentDef.unit || '',
+              precision: Number.isFinite(componentDef.precision) ? componentDef.precision : 2
+            }
+          ]
+        }
+      });
+    }
+  }
+  return components;
+}
+
+function refreshArduinoComponentIndex() {
+  arduinoComponentIndex.clear();
+  for (const component of arduinoComponents) {
+    arduinoComponentIndex.set(component.id, component);
+    if (component.config?.skipStorage) {
+      skipStorageIds.add(component.id);
+    } else {
+      skipStorageIds.delete(component.id);
+    }
+  }
+}
+
+function stopArduinoReader(sourceId) {
+  const reader = arduinoReaders.get(sourceId);
+  if (!reader) return;
+  try { reader.rl.close(); } catch {}
+  try { reader.stream.close(); } catch {}
+  arduinoReaders.delete(sourceId);
+}
+
+async function handleArduinoLine(source, line) {
+  const trimmed = String(line || '').trim();
+  if (!trimmed) return;
+
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+  if (start < 0 || end <= start) {
+    // Ignore non-JSON serial noise (boot/reset chatter, stray text).
+    return;
+  }
+
+  const jsonLine = trimmed.slice(start, end + 1);
+
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonLine);
+  } catch {
+    log.warn({ sourceId: source.sourceId }, 'Invalid Arduino JSON');
+    return;
+  }
+
+  const values = (parsed?.values && typeof parsed.values === 'object')
+    ? parsed.values
+    : parsed;
+  if (!values || typeof values !== 'object') return;
+  const ts = normalizeArduinoTimestamp(parsed.ts);
+  const map = source.channelMap || {};
+
+  for (const [fieldName, mapping] of Object.entries(map)) {
+    if (!mapping?.componentId) continue;
+    const rawValue = values[fieldName];
+    const numValue = typeof rawValue === 'number' ? rawValue : Number.parseFloat(rawValue);
+    if (!Number.isFinite(numValue)) continue;
+
+    const metricKey = mapping?.metrics?.[0]?.keys?.[0] || 'value';
+    processComponentData(
+      mapping.componentId,
+      {
+        [metricKey]: numValue,
+        timestamp: ts.timestamp,
+        timestamp_source: ts.timestamp_source
+      },
+      Boolean(mapping?.skipStorage)
+    );
+  }
+}
+
+function configureArduinoPort(source) {
+  const baud = Number.parseInt(source?.baud || '115200', 10);
+  if (!Number.isFinite(baud) || baud <= 0) return;
+  if (process.platform === 'win32') return;
+
+  const result = spawnSync(
+    'stty',
+    ['-F', source.port, String(baud), 'raw', '-echo'],
+    { encoding: 'utf-8' }
+  );
+
+  if (result.status !== 0) {
+    const stderr = String(result.stderr || '').trim();
+    const stdout = String(result.stdout || '').trim();
+    const detail = stderr || stdout || `exit=${result.status}`;
+    log.warn({ port: source.port, baud }, 'Failed to configure serial port: %s', detail);
+  } else {
+    log.info({ port: source.port, baud }, 'Configured serial port');
+  }
+}
+
+function startArduinoReader(source) {
+  if (!source?.sourceId || !source?.port) return;
+  if (!source.enabled) return;
+  if (pausedArduinoSources.has(source.sourceId)) return;
+  if (arduinoReaders.has(source.sourceId)) return;
+
+  if (!existsSync(source.port)) {
+    log.warn({ port: source.port }, 'Arduino source port not found');
+    return;
+  }
+
+  try {
+    configureArduinoPort(source);
+    const stream = createReadStream(source.port, { encoding: 'utf-8' });
+    stream.on('error', (err) => {
+      log.warn({ sourceId: source.sourceId, err }, 'Arduino stream error');
+      stopArduinoReader(source.sourceId);
+    });
+    const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    rl.on('line', (line) => {
+      handleArduinoLine(source, line).catch((err) => {
+        log.warn({ sourceId: source.sourceId, err }, 'Arduino parse error');
+      });
+    });
+    rl.on('error', (err) => {
+      log.warn({ sourceId: source.sourceId, err }, 'Arduino reader error');
+    });
+    arduinoReaders.set(source.sourceId, { stream, rl, source });
+    log.info({ sourceId: source.sourceId, port: source.port }, 'Arduino source active');
+  } catch (err) {
+    log.warn({ sourceId: source.sourceId, err }, 'Failed to start Arduino reader');
+  }
+}
+
+async function initializeArduinoIngest() {
+  if (!ENABLE_ARDUINO_INGEST) {
+    log.info('Arduino ingest disabled by LATTICESPARK_ENABLE_ARDUINO_INGEST');
+    return;
+  }
+
+  arduinoConfig = await loadArduinoConfig();
+  arduinoComponents = buildArduinoComponents(arduinoConfig);
+  refreshArduinoComponentIndex();
+
+  for (const source of arduinoConfig.sources || []) {
+    startArduinoReader(source);
+  }
+
+  io.emit('components', getComponentsWithCamera());
+}
+
+function pauseArduinoSource(sourceId) {
+  if (!sourceId) return { success: false, error: 'sourceId is required' };
+  const source = (arduinoConfig.sources || []).find(s => s.sourceId === sourceId);
+  if (!source) return { success: false, error: `source not found: ${sourceId}` };
+
+  pausedArduinoSources.add(sourceId);
+  stopArduinoReader(sourceId);
+  return { success: true, sourceId };
+}
+
+function resumeArduinoSource(sourceId) {
+  if (!sourceId) return { success: false, error: 'sourceId is required' };
+  const source = (arduinoConfig.sources || []).find(s => s.sourceId === sourceId);
+  if (!source) return { success: false, error: `source not found: ${sourceId}` };
+
+  pausedArduinoSources.delete(sourceId);
+  startArduinoReader(source);
+  return { success: true, sourceId };
+}
+
+function getLocalComponents() {
+  return [
+    ...(coordinator ? coordinator.getComponents() : []),
+    ...arduinoComponents
+  ];
+}
+
+function getRemoteComponents() {
+  const components = [];
+  for (const spoke of remoteSpokes.values()) {
+    if (!Array.isArray(spoke.components)) continue;
+    components.push(...spoke.components);
+  }
+  return components;
+}
+
+function validateAndNormalizeData(componentId, rawData) {
+  if (!rawData || typeof rawData !== 'object') {
+    log.warn({ componentId }, 'Invalid data: not an object');
+    return null;
+  }
+
+  const validated = {};
+  let hasMetrics = false;
+
+  let timestamp = rawData.timestamp;
+  if (!Number.isFinite(timestamp)) {
+    timestamp = Date.now() / 1000;
+  }
+  validated.timestamp = timestamp;
+
+  if (typeof rawData.timestamp_source === 'string') {
+    validated.timestamp_source = rawData.timestamp_source;
+  }
+
+  for (const [key, value] of Object.entries(rawData)) {
+    if (key === 'timestamp' || key === 'timestamp_source') continue;
+    if (Number.isFinite(value) || typeof value === 'string') {
+      validated[key] = value;
+      hasMetrics = true;
+    } else {
+      log.warn({ componentId, key, value }, 'Dropping invalid metric');
+    }
+  }
+
+  if (!hasMetrics) return null;
+  return validated;
+}
+
+function processComponentData(componentId, rawData, skipStorage = false) {
+  const validated = validateAndNormalizeData(componentId, rawData);
+  if (!validated) return;
+
+  if (DEBUG) log.debug({ componentId, data: validated }, 'Component data');
+
+  latestDataCache.set(componentId, validated);
+  pendingBatch[componentId] = validated;
+
+  if (!skipStorage) {
+    const now = Date.now();
+    const lastPush = lastStoragePush.get(componentId) || 0;
+    if (now - lastPush >= STORAGE_INTERVAL) {
+      lastStoragePush.set(componentId, now);
+      pushToStorage(componentId, validated);
+    }
+  }
+}
+
+async function writeToRemoteComponent(nodeId, componentId, data, ownerId, leaseTtlMs) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (API_KEY) headers['X-API-Key'] = API_KEY;
+  const response = await fetch(
+    `${FLEET_SERVICE_URL}/api/spokes/${encodeURIComponent(nodeId)}/components/${encodeURIComponent(componentId)}/write`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        data,
+        ownerId,
+        leaseTtlMs
+      })
+    }
+  );
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || `Remote write failed with status ${response.status}`);
+  }
+  return payload;
 }
 
 // REST API: Get all sensors
 app.get('/api/sensors', (req, res) => {
-  if (!coordinator) {
-    return res.status(503).json({ error: 'Coordinator not initialized' });
-  }
-
-  const components = coordinator.getComponents();
+  const localComponents = getLocalComponents();
+  const components = [...localComponents, ...getRemoteComponents()];
   res.json({ sensors: components });
 });
 
 // REST API: Read specific sensor
 app.get('/api/sensors/:id/read', async (req, res) => {
+  const componentId = req.params.id;
+  const parsedRemote = parseCanonicalComponentId(componentId);
+  if (parsedRemote && remoteComponentIndex.has(componentId)) {
+    const data = latestDataCache.get(componentId);
+    if (!data) {
+      return res.status(404).json({ error: `No cached data for remote component ${componentId}` });
+    }
+    return res.json({
+      sensorId: componentId,
+      data,
+      timestamp: Date.now()
+    });
+  }
+
+  if (arduinoComponentIndex.has(componentId)) {
+    const data = latestDataCache.get(componentId);
+    if (!data) {
+      return res.status(404).json({ error: `No cached data for Arduino component ${componentId}` });
+    }
+    return res.json({
+      sensorId: componentId,
+      data,
+      timestamp: Date.now()
+    });
+  }
+
   if (!coordinator) {
     return res.status(503).json({ error: 'Coordinator not initialized' });
   }
 
   try {
-    const data = await withTimeout(coordinator.read(req.params.id), READ_TIMEOUT, `read ${req.params.id}`);
+    const data = await withTimeout(coordinator.read(componentId), READ_TIMEOUT, `read ${componentId}`);
     res.json({
-      sensorId: req.params.id,
+      sensorId: componentId,
       data,
       timestamp: Date.now()
     });
@@ -139,7 +482,7 @@ app.post('/api/components', async (req, res) => {
       try {
         await withTimeout(coordinator.read(id), READ_TIMEOUT, `poll ${id}`);
       } catch (error) {
-        console.error(`Error polling ${id}:`, error.message);
+        log.error({ componentId: id, err: error }, 'Error polling component');
       }
     }, interval);
     pollingIntervals.set(id, intervalId);
@@ -150,11 +493,157 @@ app.post('/api/components', async (req, res) => {
   }
 });
 
+// Arduino ingest control (used by firmware deployment flow)
+app.post('/api/arduino/sources/:sourceId/pause', requireApiKey, (req, res) => {
+  if (!ENABLE_ARDUINO_INGEST) {
+    res.status(400).json({ error: 'Arduino ingest disabled' });
+    return;
+  }
+  const { sourceId } = req.params;
+  const result = pauseArduinoSource(sourceId);
+  if (!result.success) {
+    res.status(404).json({ error: result.error });
+    return;
+  }
+  res.json(result);
+});
+
+app.post('/api/arduino/sources/:sourceId/resume', requireApiKey, (req, res) => {
+  if (!ENABLE_ARDUINO_INGEST) {
+    res.status(400).json({ error: 'Arduino ingest disabled' });
+    return;
+  }
+  const { sourceId } = req.params;
+  const result = resumeArduinoSource(sourceId);
+  if (!result.success) {
+    res.status(404).json({ error: result.error });
+    return;
+  }
+  res.json(result);
+});
+
+// Hub relay API: register/refresh components for a spoke node
+app.post('/api/relay/spokes/:nodeId/components', requireApiKey, (req, res) => {
+  const nodeId = normalizeNodeId(req.params.nodeId);
+  if (!nodeId) {
+    res.status(400).json({ error: 'Invalid nodeId' });
+    return;
+  }
+
+  const incoming = Array.isArray(req.body?.components) ? req.body.components : [];
+  const canonicalComponents = incoming
+    .filter(component => component && typeof component.id === 'string')
+    .map(component => {
+      const rawId = component.id.startsWith(`${nodeId}.`)
+        ? component.id.slice(nodeId.length + 1)
+        : component.id;
+      return {
+        ...component,
+        id: canonicalComponentId(nodeId, rawId),
+        config: {
+          ...(component.config || {}),
+          nodeId
+        }
+      };
+    });
+
+  // Remove any previous component index entries for this node
+  for (const [componentId, info] of remoteComponentIndex.entries()) {
+    if (info.nodeId === nodeId) {
+      remoteComponentIndex.delete(componentId);
+      latestDataCache.delete(componentId);
+      lastStoragePush.delete(componentId);
+    }
+  }
+
+  for (const component of canonicalComponents) {
+    const originalComponentId = component.id.slice(nodeId.length + 1);
+    remoteComponentIndex.set(component.id, {
+      nodeId,
+      componentId: originalComponentId,
+      component
+    });
+  }
+
+  const prevState = remoteSpokes.get(nodeId) || {};
+  remoteSpokes.set(nodeId, {
+    nodeId,
+    components: canonicalComponents,
+    lastSeq: prevState.lastSeq || 0,
+    lastSeen: Date.now(),
+    online: true
+  });
+
+  io.emit('components', getComponentsWithCamera());
+  res.json({ success: true, nodeId, count: canonicalComponents.length });
+});
+
+// Hub relay API: ingest batched sensor updates for a spoke
+app.post('/api/relay/spokes/:nodeId/batch', requireApiKey, (req, res) => {
+  const nodeId = normalizeNodeId(req.params.nodeId);
+  const seq = Number(req.body?.seq);
+  const batch = req.body?.batch;
+
+  if (!nodeId) {
+    res.status(400).json({ error: 'Invalid nodeId' });
+    return;
+  }
+  if (!Number.isFinite(seq)) {
+    res.status(400).json({ error: 'seq is required' });
+    return;
+  }
+  if (!batch || typeof batch !== 'object') {
+    res.status(400).json({ error: 'batch must be an object' });
+    return;
+  }
+
+  const spoke = remoteSpokes.get(nodeId) || { components: [], lastSeq: 0, online: true };
+  if (seq <= spoke.lastSeq) {
+    // Idempotent replay: already processed
+    res.json({ ack: spoke.lastSeq });
+    return;
+  }
+
+  for (const [localComponentId, data] of Object.entries(batch)) {
+    const canonicalId = canonicalComponentId(nodeId, localComponentId);
+    const remoteMeta = remoteComponentIndex.get(canonicalId);
+    const skipStorage = Boolean(remoteMeta?.component?.config?.skipStorage);
+    processComponentData(canonicalId, data, skipStorage);
+  }
+
+  spoke.lastSeq = seq;
+  spoke.lastSeen = Date.now();
+  spoke.online = true;
+  remoteSpokes.set(nodeId, spoke);
+
+  res.json({ ack: seq });
+});
+
+// Hub relay API: mark spoke offline and remove its components from live view
+app.post('/api/relay/spokes/:nodeId/offline', requireApiKey, (req, res) => {
+  const nodeId = normalizeNodeId(req.params.nodeId);
+  const spoke = remoteSpokes.get(nodeId);
+  if (!spoke) {
+    res.json({ success: true, removed: 0 });
+    return;
+  }
+
+  let removed = 0;
+  for (const component of spoke.components || []) {
+    remoteComponentIndex.delete(component.id);
+    latestDataCache.delete(component.id);
+    lastStoragePush.delete(component.id);
+    removed++;
+  }
+  remoteSpokes.delete(nodeId);
+  io.emit('components', getComponentsWithCamera());
+  res.json({ success: true, removed });
+});
+
 // REST API: Health check with upstream dependency verification
-app.get('/health', async (req, res) => {
+service.registerHealthCheck(async () => {
   const coordinatorOk = coordinator !== null;
 
-  // Check storage service reachability
   let storageStatus = 'unknown';
   try {
     const controller = new AbortController();
@@ -166,17 +655,36 @@ app.get('/health', async (req, res) => {
     storageStatus = 'unreachable';
   }
 
-  const healthy = coordinatorOk && storageStatus === 'ok';
-  res.status(healthy ? 200 : 503).json({
+  let fleetStatus = 'n/a';
+  if (ROLE === 'hub') {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3000);
+      const resp = await fetch(`${FLEET_SERVICE_URL}/health`, { signal: controller.signal });
+      clearTimeout(timer);
+      fleetStatus = resp.ok ? 'ok' : 'error';
+    } catch {
+      fleetStatus = 'unreachable';
+    }
+  }
+
+  const healthy = coordinatorOk && storageStatus === 'ok' && (ROLE !== 'hub' || fleetStatus === 'ok');
+  return {
     status: healthy ? 'ok' : 'degraded',
     dependencies: {
       coordinator: coordinatorOk ? 'ready' : 'not initialized',
       storageService: storageStatus,
-      camera: cameraClient?.isReady ? 'ready' : 'not available'
+      camera: cameraClient?.isReady ? 'ready' : 'not available',
+      arduinoIngest: ENABLE_ARDUINO_INGEST ? 'enabled' : 'disabled',
+      fleet: fleetStatus
     },
     pollingComponents: pollingIntervals.size,
+    arduinoSources: arduinoReaders.size,
+    arduinoComponents: arduinoComponents.length,
+    remoteSpokes: remoteSpokes.size,
+    remoteComponents: remoteComponentIndex.size,
     uptime: process.uptime()
-  });
+  };
 });
 
 // Camera: Proxy MJPEG stream from Python camera service
@@ -196,7 +704,7 @@ app.get('/api/camera/stream', (req, res) => {
   });
 
   upstream.on('error', (err) => {
-    console.error('Camera stream proxy error:', err.message);
+    log.error({ err }, 'Camera stream proxy error');
     if (!res.headersSent) {
       res.status(502).json({ error: 'Camera stream unavailable' });
     }
@@ -223,7 +731,7 @@ app.get('/api/camera/snapshot', (req, res) => {
   });
 
   upstream.on('error', (err) => {
-    console.error('Camera snapshot proxy error:', err.message);
+    log.error({ err }, 'Camera snapshot proxy error');
     if (!res.headersSent) {
       res.status(502).json({ error: 'Camera snapshot unavailable' });
     }
@@ -249,24 +757,44 @@ app.get('/api/camera/status', async (req, res) => {
 
 // WebSocket connection handling
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  log.info({ socketId: socket.id }, 'Client connected');
 
   // Send current sensor list (include camera as virtual component)
-  if (coordinator) {
-    socket.emit('components', getComponentsWithCamera());
-  }
+  socket.emit('components', getComponentsWithCamera());
 
   // Handle write commands from client
-  socket.on('component:write', async ({ componentId, data }, callback) => {
-    if (!coordinator) {
-      callback?.({ error: 'Coordinator not initialized' });
-      return;
-    }
+  socket.on('component:write', async ({ componentId, data, ownerId, leaseTtlMs }, callback) => {
     try {
+      if (!componentId || !data || typeof data !== 'object') {
+        callback?.({ error: 'componentId and data are required' });
+        return;
+      }
+
+      const parsed = parseCanonicalComponentId(componentId);
+      if (parsed && remoteComponentIndex.has(componentId)) {
+        const remoteResult = await withTimeout(
+          writeToRemoteComponent(
+            parsed.nodeId,
+            parsed.componentId,
+            data,
+            ownerId || socket.id,
+            leaseTtlMs
+          ),
+          READ_TIMEOUT + 5000,
+          `remote write ${componentId}`
+        );
+        callback?.({ success: true, remote: true, ...remoteResult });
+        return;
+      }
+
+      if (!coordinator) {
+        callback?.({ error: 'Coordinator not initialized' });
+        return;
+      }
       await withTimeout(coordinator.write(componentId, data), READ_TIMEOUT, `write ${componentId}`);
-      callback?.({ success: true });
+      callback?.({ success: true, remote: false });
     } catch (error) {
-      console.error(`Write error for ${componentId}:`, error.message);
+      log.error({ componentId, err: error }, 'Write error');
       callback?.({ error: error.message });
     }
   });
@@ -298,13 +826,13 @@ io.on('connection', (socket) => {
       }
       callback?.({ success: true, ...result });
     } catch (error) {
-      console.error(`Camera control error (${action}):`, error.message);
+      log.error({ action, err: error }, 'Camera control error');
       callback?.({ error: error.message });
     }
   });
 
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+    log.info({ socketId: socket.id }, 'Client disconnected');
   });
 });
 
@@ -328,13 +856,13 @@ async function pushToStorage(sensorId, data) {
     });
 
     if (!response.ok) {
-      console.error(`Storage push failed: ${response.statusText}`);
+      log.error('Storage push failed: %s', response.statusText);
     }
   } catch (error) {
     if (error.name === 'AbortError') {
-      console.error(`Storage push timeout for ${sensorId} (>${STORAGE_PUSH_TIMEOUT}ms)`);
+      log.error({ sensorId, timeoutMs: STORAGE_PUSH_TIMEOUT }, 'Storage push timeout');
     } else {
-      console.error('Failed to push to storage:', error.message);
+      log.error({ err: error }, 'Failed to push to storage');
     }
   } finally {
     clearTimeout(timer);
@@ -343,7 +871,10 @@ async function pushToStorage(sensorId, data) {
 
 // Build component list including camera as virtual component
 function getComponentsWithCamera() {
-  const components = coordinator ? coordinator.getComponents() : [];
+  const components = [
+    ...getLocalComponents(),
+    ...getRemoteComponents()
+  ];
   if (cameraClient?.isReady && cameraConfig) {
     components.push({
       id: 'camera',
@@ -363,11 +894,11 @@ async function initializeCamera(configFile) {
     cameraConfig = fullConfig.camera;
 
     if (!cameraConfig || cameraConfig.enabled === false) {
-      console.log('Camera not configured or disabled, skipping');
+      log.info('Camera not configured or disabled, skipping');
       return;
     }
 
-    console.log(`Monitoring camera service at ${CAMERA_SERVICE_URL}...`);
+    log.info('Monitoring camera service at %s', CAMERA_SERVICE_URL);
     cameraClient = new CameraClient({ url: CAMERA_SERVICE_URL });
 
     // Forward detection events from camera to WebSocket clients
@@ -377,12 +908,12 @@ async function initializeCamera(configFile) {
 
     // Camera comes and goes — update component list for connected clients
     cameraClient.on('ready', (status) => {
-      console.log(`Camera service ready (fps=${status.fps}, resolution=${status.resolution})`);
+      log.info({ fps: status.fps, resolution: status.resolution }, 'Camera service ready');
       io.emit('components', getComponentsWithCamera());
     });
 
     cameraClient.on('disconnected', () => {
-      console.warn('Camera service disconnected, will retry...');
+      log.warn('Camera service disconnected, will retry...');
       io.emit('components', getComponentsWithCamera());
     });
 
@@ -390,7 +921,7 @@ async function initializeCamera(configFile) {
     cameraClient.startMonitoring();
 
   } catch (error) {
-    console.error('Failed to initialize camera client:', error.message);
+    log.error({ err: error }, 'Failed to initialize camera client');
     cameraClient = null;
   }
 }
@@ -399,56 +930,22 @@ async function initializeCamera(configFile) {
 async function initializeCoordinator() {
   try {
     const configFile = join(__dirname, '..', '..', 'config', 'components.json');
-    console.log('Initializing coordinator...');
-    console.log('Config file:', configFile);
+    log.info('Initializing coordinator...');
+    log.info('Config file: %s', configFile);
 
     coordinator = await createSensorCoordinator({ configFile });
 
     // Listen to component data events - store refs for cleanup
     coordinatorListeners.data = (event) => {
-      if (!event.data || typeof event.data !== 'object') {
-        console.warn(`Invalid data from ${event.componentId}: not an object`);
-        return;
-      }
-
-      // Ensure timestamp exists and is valid
-      if (!event.data.timestamp || !Number.isFinite(event.data.timestamp)) {
-        event.data.timestamp = Date.now() / 1000;
-      }
-
-      // Validate metric values - allow numbers and strings, drop booleans/objects
-      const validated = { timestamp: event.data.timestamp };
-      let hasData = false;
-      for (const [key, value] of Object.entries(event.data)) {
-        if (key === 'timestamp') continue;
-        if (Number.isFinite(value) || typeof value === 'string') {
-          validated[key] = value;
-          hasData = true;
-        } else {
-          console.warn(`Dropping invalid metric ${key}=${value} from ${event.componentId}`);
-        }
-      }
-
-      if (!hasData) return;
-
-      if (DEBUG) console.log(`[${event.componentId}]`, validated);
-
-      // Buffer for batched WebSocket emission
-      pendingBatch[event.componentId] = validated;
-
-      // Push to Storage Service (throttled, skip components with skipStorage)
-      if (!skipStorageIds.has(event.componentId)) {
-        const now = Date.now();
-        const lastPush = lastStoragePush.get(event.componentId) || 0;
-        if (now - lastPush >= STORAGE_INTERVAL) {
-          lastStoragePush.set(event.componentId, now);
-          pushToStorage(event.componentId, validated);
-        }
-      }
+      processComponentData(
+        event.componentId,
+        event.data,
+        skipStorageIds.has(event.componentId)
+      );
     };
 
     coordinatorListeners.error = (event) => {
-      console.error('Component error:', event.componentId, event.error.message);
+      log.error({ componentId: event.componentId, err: event.error }, 'Component error');
       io.emit('sensor:error', {
         componentId: event.componentId,
         error: event.error.message
@@ -480,7 +977,7 @@ async function initializeCoordinator() {
       }
     }
 
-    console.log('✓ Coordinator initialized');
+    log.info('Coordinator initialized');
 
     // Start polling sensors based on config
     startPolling();
@@ -488,8 +985,10 @@ async function initializeCoordinator() {
     // Initialize camera service (non-blocking — failure doesn't affect sensors)
     await initializeCamera(configFile);
 
+    await initializeArduinoIngest();
+
   } catch (error) {
-    console.error('Failed to initialize coordinator:', error);
+    log.error({ err: error }, 'Failed to initialize coordinator');
     process.exit(1);
   }
 }
@@ -501,14 +1000,14 @@ function startPolling() {
   for (const component of components) {
     const interval = component.config?.pollInterval || 5000;
 
-    console.log(`Starting polling for ${component.id} (${interval}ms)`);
+    log.info({ componentId: component.id, intervalMs: interval }, 'Starting polling');
 
     const intervalId = setInterval(async () => {
       inFlightReads++;
       try {
         await withTimeout(coordinator.read(component.id), READ_TIMEOUT, `poll ${component.id}`);
       } catch (error) {
-        console.error(`Error polling ${component.id}:`, error.message);
+        log.error({ componentId: component.id, err: error }, 'Error polling component');
       } finally {
         inFlightReads--;
       }
@@ -525,7 +1024,7 @@ function startPolling() {
     try {
       io.emit('sensor:batch', batch);
     } catch (error) {
-      console.error('Failed to emit sensor batch:', error.message);
+      log.error({ err: error }, 'Failed to emit sensor batch');
     }
   }, BATCH_INTERVAL);
 }
@@ -538,110 +1037,71 @@ function stopPolling() {
   }
 
   for (const [sensorId, intervalId] of pollingIntervals.entries()) {
-    console.log(`Stopping polling for ${sensorId}`);
+    log.info({ componentId: sensorId }, 'Stopping polling');
     clearInterval(intervalId);
   }
   pollingIntervals.clear();
 }
 
-// Shutdown handler
-async function shutdown(signal) {
-  console.log('');
-  console.log(`Received ${signal}, shutting down...`);
-
-  const forceExitTimer = setTimeout(() => {
-    console.log('Force exit after timeout');
-    process.exit(1);
-  }, 10000);
-
-  try {
-    // Stop polling (no new reads will start)
-    stopPolling();
-
-    // Wait for in-flight reads to complete (max 5s, checked every 100ms)
-    if (inFlightReads > 0) {
-      console.log(`Waiting for ${inFlightReads} in-flight read(s) to complete...`);
-      const drainStart = Date.now();
-      while (inFlightReads > 0 && Date.now() - drainStart < 5000) {
-        await new Promise(r => setTimeout(r, 100));
-      }
-      if (inFlightReads > 0) {
-        console.warn(`${inFlightReads} read(s) still in-flight after 5s, proceeding with shutdown`);
-      }
-    }
-
-    // Close Socket.io
-    io.close(() => {
-      console.log('Socket.io closed');
-    });
-
-    // Remove coordinator listeners and shutdown
-    if (coordinator) {
-      if (coordinatorListeners.data) {
-        coordinator.removeListener('component:data', coordinatorListeners.data);
-      }
-      if (coordinatorListeners.error) {
-        coordinator.removeListener('component:error', coordinatorListeners.error);
-      }
-      if (coordinatorListeners.ready) {
-        coordinator.removeListener('component:ready', coordinatorListeners.ready);
-      }
-      coordinatorListeners = {};
-      await coordinator.shutdown();
-      coordinator = null;
-    }
-
-    // Disconnect camera client (camera-service runs independently under PM2)
-    if (cameraClient) {
-      cameraClient.cleanup();
-      cameraClient = null;
-      console.log('Camera client disconnected');
-    }
-
-    // Close HTTP server
-    httpServer.close(() => {
-      console.log('Server closed');
-      clearTimeout(forceExitTimer);
-      process.exit(0);
-    });
-
-    // Force close after 2 seconds
-    setTimeout(() => {
-      console.log('Force closing server');
-      clearTimeout(forceExitTimer);
-      process.exit(0);
-    }, 2000);
-
-  } catch (error) {
-    console.error('Error during shutdown:', error);
-    clearTimeout(forceExitTimer);
-    process.exit(1);
+function stopAllArduinoReaders() {
+  for (const sourceId of arduinoReaders.keys()) {
+    stopArduinoReader(sourceId);
   }
 }
 
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
+// ── Service lifecycle ────────────────────────────────────────────────────────
 
-// Handle port binding errors
-httpServer.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`[sensor-service] Port ${PORT} already in use. Kill the old process or choose a different port.`);
-  } else {
-    console.error('[sensor-service] Server error:', err.message);
-  }
-  process.exit(1);
-});
-
-// Start server
-httpServer.listen(PORT, async () => {
-  console.log('='.repeat(60));
-  console.log(`Sensor Service running on http://localhost:${PORT}`);
-  console.log('='.repeat(60));
-  console.log('');
-
+service.initialize = async () => {
+  log.info('Role: %s', ROLE);
   await initializeCoordinator();
+  log.info('Ready - WebSocket: ws://localhost:%d', PORT);
+  log.info('Pushing data to Storage Service: %s', STORAGE_SERVICE_URL);
+};
 
-  console.log('');
-  console.log(`✓ Ready - WebSocket: ws://localhost:${PORT}`);
-  console.log(`✓ Pushing data to Storage Service: ${STORAGE_SERVICE_URL}`);
-});
+service.onShutdown = async () => {
+  // Stop polling (no new reads will start)
+  stopPolling();
+  stopAllArduinoReaders();
+
+  // Wait for in-flight reads to complete (max 5s, checked every 100ms)
+  if (inFlightReads > 0) {
+    log.info('Waiting for %d in-flight read(s) to complete...', inFlightReads);
+    const drainStart = Date.now();
+    while (inFlightReads > 0 && Date.now() - drainStart < 5000) {
+      await new Promise(r => setTimeout(r, 100));
+    }
+    if (inFlightReads > 0) {
+      log.warn('%d read(s) still in-flight after 5s, proceeding with shutdown', inFlightReads);
+    }
+  }
+
+  // Close Socket.io
+  io.close(() => {
+    log.info('Socket.io closed');
+  });
+
+  // Remove coordinator listeners and shutdown
+  if (coordinator) {
+    if (coordinatorListeners.data) {
+      coordinator.removeListener('component:data', coordinatorListeners.data);
+    }
+    if (coordinatorListeners.error) {
+      coordinator.removeListener('component:error', coordinatorListeners.error);
+    }
+    if (coordinatorListeners.ready) {
+      coordinator.removeListener('component:ready', coordinatorListeners.ready);
+    }
+    coordinatorListeners = {};
+    await coordinator.shutdown();
+    coordinator = null;
+  }
+
+  // Disconnect camera client (camera-service runs independently under PM2)
+  if (cameraClient) {
+    cameraClient.cleanup();
+    cameraClient = null;
+    log.info('Camera client disconnected');
+  }
+};
+
+service.start();

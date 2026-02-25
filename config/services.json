@@ -11,7 +11,8 @@
         "Polls sensors at configured rates",
         "WebSocket real-time streaming",
         "REST API for current readings",
-        "Pushes data to Storage Service"
+        "Pushes data to Storage Service",
+        "Processes Arduino serial JSON-line sources"
       ]
     },
     "storage": {
@@ -50,6 +51,32 @@
         "WebSocket for module state to UI"
       ]
     },
+    "fleet": {
+      "port": 3010,
+      "description": "Hub control plane for spoke federation",
+      "endpoints": {
+        "rest": "http://localhost:3010",
+        "websocket": "ws://localhost:3010"
+      },
+      "features": [
+        "Tracks connected spokes",
+        "Relays spoke batches to hub sensor-service",
+        "Lease-enforced remote writes",
+        "Module and firmware deployment APIs"
+      ]
+    },
+    "spokeAgent": {
+      "port": null,
+      "description": "Spoke-side relay and execution agent",
+      "endpoints": {
+        "outboundHubWebsocket": "ws://<hub>:3010"
+      },
+      "features": [
+        "Durable relay queue with replay",
+        "Executes hub module/firmware commands",
+        "Publishes heartbeat and status to fleet-service"
+      ]
+    },
     "web": {
       "port": 8080,
       "description": "Static file server and API proxy",
@@ -59,6 +86,10 @@
       "proxies": {
         "/api/sensors/*": "sensor-service:3000",
         "/api/history/*": "storage-service:3001",
+        "/api/modules/*": "module-service:3002",
+        "/api/spokes/*": "fleet-service:3010",
+        "/api/module-bundles": "fleet-service:3010",
+        "/api/firmware/*": "fleet-service:3010",
         "/ws": "sensor-service:3000"
       },
       "features": [
@@ -73,7 +104,19 @@
     "SENSOR_SERVICE_PORT": "3000",
     "STORAGE_SERVICE_PORT": "3001",
     "MODULE_SERVICE_PORT": "3002",
+    "FLEET_SERVICE_PORT": "3010",
     "STORAGE_SERVICE_URL": "http://localhost:3001",
+    "FLEET_SERVICE_URL": "http://localhost:3010",
+    "LATTICESPARK_ROLE": "standalone",
+    "LATTICESPARK_NODE_ID": "local",
+    "LATTICESPARK_HUB_URL": "http://localhost:3010",
+    "LATTICESPARK_ENABLE_SENSOR_SERVICE": "true",
+    "LATTICESPARK_ENABLE_STORAGE_SERVICE": "true",
+    "LATTICESPARK_ENABLE_MODULE_SERVICE": "true",
+    "LATTICESPARK_ENABLE_CAMERA_SERVICE": "true",
+    "LATTICESPARK_ENABLE_WEB_SERVER": "true",
+    "LATTICESPARK_ENABLE_FLEET_SERVICE": "true",
+    "LATTICESPARK_ENABLE_SPOKE_AGENT_SERVICE": "true",
     "DB_PATH": "data/sensors.db",
     "RETENTION_HOURS": "24",
     "PORT": "8080"
@@ -84,6 +127,8 @@
     "start_sensor_service": "npm run sensor-service",
     "start_storage_service": "npm run storage-service",
     "start_module_service": "npm run module-service",
+    "start_fleet_service": "npm run fleet-service",
+    "start_spoke_agent_service": "npm run spoke-agent-service",
     "start_web_server": "npm run web:server"
   }
 }
