@@ -3,6 +3,9 @@ import { resolve } from 'path';
 
 export default defineConfig({
   root: 'web',
+  server: {
+    host: true
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true

@@ -8,6 +8,26 @@
 
 .card-header {
   margin-bottom: 0;
+  gap: 0.5rem;
+}
+
+.time-range-select {
+  font-family: var(--card-type-font, inherit);
+  font-size: var(--card-type-size, 0.75rem);
+  font-weight: var(--card-type-weight, 400);
+  color: var(--card-type-color, var(--text-secondary));
+  background: var(--card-type-bg, var(--bg-secondary));
+  padding: 0.15rem 0.3rem;
+  border-radius: var(--card-type-radius, 4px);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  cursor: pointer;
+  flex-shrink: 0;
+  max-width: 4rem;
+
+  &:focus {
+    outline: 1px solid var(--accent);
+    outline-offset: 1px;
+  }
 }
 
 .tab-bar {

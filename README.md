@@ -1,8 +1,10 @@
 # LatticeSpark Framework
 
-A general-purpose framework for interfacing with all LatticeSpark sensors and components using Node.js and Python on Raspberry Pi 5.
+A general-purpose framework for interfacing with a variety sensors and components using Node.js and Python on Raspberry Pi 5.
 
-**23 on-board components + USB camera** implemented with a real-time web dashboard, extensible module system, and 24/7 production reliability via PM2.
+Implemented with a real-time web dashboard, extensible module system, and 24/7 production reliability via PM2. Compatible with the
+
+CrowPi3 and can interface with all **23 on-board components and USB camera**.
 
 ---
 
@@ -47,7 +49,7 @@ Five services run together, managed by PM2 in production:
 
 | Service | Port | What it does |
 |---------|------|--------------|
-| sensor-service | 3000 | Polls all sensors, broadcasts via WebSocket, REST API |
+| sensor-service | 3000 | Polls sensors, ingests Arduino serial sources, WebSocket + REST API |
 | storage-service | 3001 | SQLite time-series storage with 24-hour retention |
 | module-service | 3002 | Runs user modules, REST + Socket.IO (`/modules-io`) |
 | camera-service | 8081 | Python MJPEG streaming + ML detection (standalone) |
@@ -61,6 +63,30 @@ pnpm run services:stop     # Stop all
 pnpm run services:restart  # Restart all
 pnpm run services:logs     # Tail logs
 pnpm run services:status   # Process status
+```
+
+### PM2 Service Toggles
+
+You can enable/disable services at startup with environment variables (default for each is `true`):
+
+- `LATTICESPARK_ENABLE_SENSOR_SERVICE`
+- `LATTICESPARK_ENABLE_STORAGE_SERVICE`
+- `LATTICESPARK_ENABLE_MODULE_SERVICE`
+- `LATTICESPARK_ENABLE_CAMERA_SERVICE`
+- `LATTICESPARK_ENABLE_WEB_SERVER`
+- `LATTICESPARK_ENABLE_FLEET_SERVICE`
+- `LATTICESPARK_ENABLE_SPOKE_AGENT_SERVICE`
+
+Accepted false values: `0`, `false`, `no`, `off`, `disabled` (case-insensitive).
+
+Example: start a spoke with camera disabled:
+
+```bash
+export LATTICESPARK_ROLE=spoke
+export LATTICESPARK_NODE_ID=spoke-1
+export LATTICESPARK_HUB_URL=http://<hub-ip>:3010
+export LATTICESPARK_ENABLE_CAMERA_SERVICE=false
+pnpm run services
 ```
 
 ### First-Time PM2 Setup
@@ -242,8 +268,11 @@ Edit on your desktop, sync to Pi:
 
 ```bash
 # Linux/macOS
-./sync.sh                     # Uses default Pi IP
-./sync.sh pi@192.168.1.100    # Specify Pi
+./sync.sh                           # Core sync (excludes modules)
+./sync.sh pi@192.168.1.100          # Core sync to specific Pi
+./sync.sh --with-config 192.168.1.100
+./sync-modules.sh hello-world       # Sync one module to default Pi
+./sync-modules.sh 192.168.1.100 hello-world segment-clock
 
 # Windows PowerShell
 .\sync.ps1
@@ -251,6 +280,7 @@ Edit on your desktop, sync to Pi:
 ```
 
 Edit `PI_HOST` in the sync script to set your default Pi address.
+`sync.sh` preserves remote `config/*.json` by default; pass `--with-config` to sync them.
 
 ---
 
@@ -324,6 +354,52 @@ Steps:
 4. Optionally create a web card in `web/src/components/`
 
 No changes to `hardware-manager.py` needed — it auto-loads drivers via `importlib`.
+
+---
+
+## Hub/Spoke Federation
+
+LatticeSpark supports hub/spoke deployments with two new services:
+
+- `fleet-service` (hub control plane on port `3010`)
+- `spoke-agent-service` (spoke relay/command agent)
+
+### Key behavior
+
+- `sensor-service` ingests Arduino serial JSON-lines in any role (`standalone`, `hub`, or `spoke`).
+- Spokes relay local sensor batches to hub over persistent WebSocket.
+- `spoke-agent-service` relays data and executes hub commands; it does not read serial ports directly.
+- Hub canonicalizes remote IDs to `<nodeId>.<componentId>`.
+- Spoke relay queue supports offline buffering + replay.
+- Hub can manage spoke modules and trigger module/firmware deployments.
+- Remote writes to spoke components are lease-enforced.
+
+### New configuration
+
+- `config/cluster.json`
+- `config/arduino-sources.json` (used by sensor-service for Arduino serial ingest)
+
+### Config precedence
+
+- Services read cluster identity/auth from `config/cluster.json` by default.
+- Environment variables still override when explicitly set (`LATTICESPARK_ROLE`, `LATTICESPARK_NODE_ID`, `LATTICESPARK_HUB_URL`, `LATTICESPARK_API_KEY`).
+- PM2 no longer injects default role/node/key values that could silently override `cluster.json`.
+- Temporary auth bypass: set `"disableAuth": true` in `config/cluster.json` (or `LATTICESPARK_DISABLE_AUTH=true`) to disable API-key auth across services.
+
+### New scripts
+
+```bash
+pnpm run fleet-service
+pnpm run spoke-agent-service
+pnpm run services:dev:all
+pnpm run firmware:release   # compile + package + upload + deploy Arduino firmware
+pnpm run firmware:rollback  # request rollback on a spoke
+```
+
+### Setup walkthrough
+
+See [Hub/Spoke Setup Guide](HUB_SPOKE_SETUP.md) for end-to-end hub and spoke configuration, startup, verification, and Arduino firmware prerequisites.
+If you want the shortest command-first path for one hub and one spoke, use [Hub/Spoke Quick Start](HUB_SPOKE_QUICKSTART.md).
 
 ---
 

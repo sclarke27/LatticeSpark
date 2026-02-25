@@ -1,13 +1,9 @@
 import { unsafeCSS } from 'lit';
 import { BaseChartCard, Chart } from '../shared/base-chart-card.js';
 import { getColor, AXIS_COLORS } from '../shared/metrics-config.js';
+import { TIME_RANGES, DEFAULT_RANGE_ID, MAX_DISPLAY_POINTS, getRangeById, downsample } from './time-ranges.js';
 import styles from './sensor-card.scss?inline';
 import { render } from './sensor-card.view.js';
-
-// Max data points per chart dataset — prevents unbounded memory growth
-const MAX_DATA_POINTS = 500;
-// How many seconds of history to load when a chart first appears
-const HISTORY_SECONDS = 60;
 
 const GRID_COLOR = 'rgba(255, 255, 255, 0.05)';
 const TICK_COLOR = 'rgba(255, 255, 255, 0.5)';
@@ -17,7 +13,11 @@ function colorWithAlpha(rgb) {
   return rgb.replace('rgb', 'rgba').replace(')', ', 0.1)');
 }
 
-function buildChartOptions({ precision, unit, showLegend = false }) {
+function getCanvasId(componentId, key) {
+  return `chart-${componentId}-${key}`;
+}
+
+function buildChartOptions({ precision, unit, showLegend = false, range }) {
   return {
     responsive: true,
     maintainAspectRatio: false,
@@ -52,7 +52,15 @@ function buildChartOptions({ precision, unit, showLegend = false }) {
     scales: {
       x: {
         type: 'time',
-        time: { unit: 'second', displayFormats: { second: 'HH:mm:ss' } },
+        time: {
+          displayFormats: {
+            second: 'HH:mm:ss',
+            minute: 'HH:mm',
+            hour: 'HH:mm',
+            day: 'MMM d',
+          },
+          ...(range && range.seconds > 86400 ? { unit: 'hour' } : {}),
+        },
         grid: { color: GRID_COLOR },
         ticks: { color: TICK_COLOR, maxRotation: 0, font: { size: 10 } }
       },
@@ -73,10 +81,26 @@ export class SensorCard extends BaseChartCard {
   static properties = {
     component: { type: Object },
     data: { type: Object },
-    activeTab: { type: String }
+    activeTab: { type: String },
+    timeRange: { type: String }
   };
 
   static styles = unsafeCSS(styles);
+
+  connectedCallback() {
+    super.connectedCallback();
+    const saved = localStorage.getItem(`latticespark-time-range-${this.component?.id}`);
+    this.timeRange = (saved && TIME_RANGES.some(r => r.id === saved)) ? saved : DEFAULT_RANGE_ID;
+  }
+
+  setTimeRange(rangeId) {
+    this.timeRange = rangeId;
+    if (this.component?.id) {
+      localStorage.setItem(`latticespark-time-range-${this.component.id}`, rangeId);
+    }
+    this.destroyCharts();
+    requestAnimationFrame(() => this.updateCharts());
+  }
 
   getMetricsConfig() {
     return this.component?.config?.metrics || [];
@@ -155,26 +179,35 @@ export class SensorCard extends BaseChartCard {
   }
 
   _addPointToSingleChart(metric, now) {
-    const canvasId = `chart-${this.component?.id}-${metric}`;
+    const canvasId = getCanvasId(this.component?.id, metric);
     const chart = this.charts.get(canvasId);
     if (!chart) return;
 
     const value = this.data[metric];
     if (value === undefined) return;
 
+    const range = getRangeById(this.timeRange);
     const data = chart.data.datasets[0].data;
     data.push({ x: now, y: value });
-    if (data.length > MAX_DATA_POINTS) {
-      data.splice(0, data.length - MAX_DATA_POINTS);
+
+    const cutoff = now.getTime() - range.seconds * 1000;
+    while (data.length > 0 && data[0].x.getTime() < cutoff) {
+      data.shift();
+    }
+    if (data.length > MAX_DISPLAY_POINTS) {
+      data.splice(0, data.length - MAX_DISPLAY_POINTS);
     }
 
     chart.update('none');
   }
 
   _addPointToChart(chartKey, metrics, now) {
-    const canvasId = `chart-${this.component?.id}-${chartKey}`;
+    const canvasId = getCanvasId(this.component?.id, chartKey);
     const chart = this.charts.get(canvasId);
     if (!chart) return;
+
+    const range = getRangeById(this.timeRange);
+    const cutoff = now.getTime() - range.seconds * 1000;
 
     metrics.forEach((metric, i) => {
       const value = this.data[metric];
@@ -182,8 +215,12 @@ export class SensorCard extends BaseChartCard {
 
       const data = chart.data.datasets[i].data;
       data.push({ x: now, y: value });
-      if (data.length > MAX_DATA_POINTS) {
-        data.splice(0, data.length - MAX_DATA_POINTS);
+
+      while (data.length > 0 && data[0].x.getTime() < cutoff) {
+        data.shift();
+      }
+      if (data.length > MAX_DISPLAY_POINTS) {
+        data.splice(0, data.length - MAX_DISPLAY_POINTS);
       }
     });
 
@@ -205,8 +242,8 @@ export class SensorCard extends BaseChartCard {
 
   _createSingleChart(tab) {
     const metric = tab.keys[0];
-    const canvasId = `chart-${this.component?.id}-${metric}`;
-    const canvas = this.shadowRoot?.querySelector(`#${canvasId}`);
+    const canvasId = getCanvasId(this.component?.id, metric);
+    const canvas = this.shadowRoot?.getElementById(canvasId);
     if (!canvas) return;
 
     if (this.charts.has(canvasId)) {
@@ -214,6 +251,7 @@ export class SensorCard extends BaseChartCard {
     }
 
     const color = getColor(metric);
+    const range = getRangeById(this.timeRange);
 
     const chart = new Chart(canvas, {
       type: 'line',
@@ -229,7 +267,7 @@ export class SensorCard extends BaseChartCard {
           tension: 0.4
         }]
       },
-      options: buildChartOptions({ precision: tab.precision, unit: tab.unit })
+      options: buildChartOptions({ precision: tab.precision, unit: tab.unit, range })
     });
 
     this.charts.set(canvasId, chart);
@@ -237,8 +275,8 @@ export class SensorCard extends BaseChartCard {
   }
 
   _createCombinedChart(tab) {
-    const canvasId = `chart-${this.component?.id}-${tab.chartKey}`;
-    const canvas = this.shadowRoot?.querySelector(`#${canvasId}`);
+    const canvasId = getCanvasId(this.component?.id, tab.chartKey);
+    const canvas = this.shadowRoot?.getElementById(canvasId);
     if (!canvas) return;
 
     if (this.charts.has(canvasId)) {
@@ -259,10 +297,12 @@ export class SensorCard extends BaseChartCard {
       };
     });
 
+    const range = getRangeById(this.timeRange);
+
     const chart = new Chart(canvas, {
       type: 'line',
       data: { datasets },
-      options: buildChartOptions({ precision: tab.precision, unit: tab.unit, showLegend: true })
+      options: buildChartOptions({ precision: tab.precision, unit: tab.unit, showLegend: true, range })
     });
 
     this.charts.set(canvasId, chart);
@@ -273,14 +313,15 @@ export class SensorCard extends BaseChartCard {
     const componentId = this.component?.id;
     if (!componentId) return;
 
-    const start = (Date.now() / 1000) - HISTORY_SECONDS;
+    const range = getRangeById(this.timeRange);
+    const start = (Date.now() / 1000) - range.seconds;
 
     try {
       // Fetch history for each metric in parallel
       const results = await Promise.all(
         metrics.map(async (metric) => {
           const res = await fetch(
-            `/api/history/${encodeURIComponent(componentId)}?metric=${encodeURIComponent(metric)}&start=${start}&limit=${MAX_DATA_POINTS}`
+            `/api/history/${encodeURIComponent(componentId)}?metric=${encodeURIComponent(metric)}&start=${start}&limit=${range.fetchLimit}`
           );
           if (!res.ok) return [];
           const json = await res.json();
@@ -293,9 +334,11 @@ export class SensorCard extends BaseChartCard {
 
       // Populate each dataset (results come newest-first, reverse for chronological)
       metrics.forEach((metric, i) => {
-        const points = results[i]
+        const raw = results[i]
           .reverse()
           .map(d => ({ x: new Date(d.timestamp * 1000), y: d.value }));
+
+        const points = downsample(raw, MAX_DISPLAY_POINTS);
 
         const dataset = chart.data.datasets[i];
         if (dataset) {

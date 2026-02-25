@@ -25,6 +25,12 @@
   align-items: center;
 }
 
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
 .header-right {
   display: flex;
   align-items: center;
@@ -57,10 +63,92 @@ h1 {
   cursor: pointer;
 }
 
+.runtime-identity {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.runtime-chip {
+  font-size: 0.68rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.2rem 0.45rem;
+  background: color-mix(in srgb, var(--bg-secondary) 65%, transparent);
+}
+
 .container {
   flex: 1;
   padding: 0.75rem;
   overflow-y: auto;
+}
+
+.nodes-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.node-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.node-group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+
+.node-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.node-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
+}
+
+.node-badge {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
+  color: var(--text-secondary);
+
+  &.online {
+    color: var(--status-running, #4c4);
+    border-color: color-mix(in srgb, var(--status-running, #4c4) 70%, var(--border));
+  }
+
+  &.offline {
+    color: var(--status-error, #c44);
+    border-color: color-mix(in srgb, var(--status-error, #c44) 70%, var(--border));
+  }
+
+  &.reconnecting,
+  &.unknown {
+    color: var(--text-secondary);
+  }
+}
+
+.node-meta {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
 }
 
 .sensors-grid {
@@ -112,6 +200,19 @@ h1 {
   }
 }
 
+@media (max-width: 720px) {
+  .header-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .header-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
 /* === SHARED CHROME LAYOUT === */
 
 .chrome-top-bar {
@@ -124,8 +225,21 @@ h1 {
 
 .chrome-brand {
   display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chrome-brand-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chrome-brand-head {
+  display: flex;
   align-items: baseline;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .chrome-right {

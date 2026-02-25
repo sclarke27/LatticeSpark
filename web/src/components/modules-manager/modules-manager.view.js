@@ -21,9 +21,9 @@ function formatInterval(ms) {
   return `${ms}ms`;
 }
 
-export function render(el) {
+function renderLocalModules(el) {
   if (el.modules.length === 0) {
-    return html`<div class="empty">No modules discovered.</div>`;
+    return html`<div class="empty">No local modules discovered.</div>`;
   }
 
   return html`
@@ -84,5 +84,122 @@ export function render(el) {
         </div>
       `)}
     </div>
+  `;
+}
+
+function renderSpokeControls(el) {
+  const selectedSpoke = el.spokes.find(s => s.nodeId === el.selectedNodeId) || null;
+  const selectedJob = el.fleetJobs?.[el.selectedNodeId] || null;
+  const selectedModules = el.spokeModules?.[el.selectedNodeId] || [];
+  const moduleBundleOptions = el.moduleBundles.map(b => `${b.bundleId}@${b.version}`);
+  const firmwareBundleOptions = el.firmwareBundles.map(b => `${b.bundleId}@${b.version}`);
+
+  return html`
+    <section class="fleet-section">
+      <h3>Spokes</h3>
+      ${el.fleetError ? html`<div class="fleet-error">${el.fleetError}</div>` : ''}
+      ${el.spokes.length === 0 ? html`<div class="empty">No spokes connected.</div>` : html`
+        <div class="fleet-grid">
+          <div class="fleet-panel">
+            <label class="field-label" for="spoke-select">Selected Spoke</label>
+            <select id="spoke-select" class="field-input"
+                    .value=${el.selectedNodeId}
+                    @change=${(e) => { el.selectedNodeId = e.target.value; }}>
+              ${el.spokes.map(spoke => html`
+                <option value=${spoke.nodeId}>
+                  ${spoke.nodeId} (${spoke.connected ? 'online' : 'offline'})
+                </option>
+              `)}
+            </select>
+            ${selectedSpoke ? html`
+              <div class="spoke-meta">
+                <span>Status: ${selectedSpoke.connected ? 'online' : 'offline'}</span>
+                <span>Queue: ${selectedSpoke.queueDepth ?? 0}</span>
+                <span>Ack: ${selectedSpoke.replayAckSeq ?? 0}</span>
+              </div>
+            ` : ''}
+            ${selectedJob ? html`
+              <div class="spoke-job">
+                <span>Firmware Job: ${selectedJob.jobId || 'n/a'}</span>
+                <span>Status: ${selectedJob.status || 'unknown'}</span>
+                ${selectedJob.detail ? html`<span>Detail: ${selectedJob.detail}</span>` : ''}
+              </div>
+            ` : ''}
+          </div>
+
+          <div class="fleet-panel">
+            <label class="field-label" for="remote-module-id">Remote Module ID</label>
+            <input id="remote-module-id" class="field-input" type="text" placeholder="my-module"
+                   .value=${el.remoteModuleId}
+                   @input=${(e) => { el.remoteModuleId = e.target.value.trim(); }}>
+            ${selectedModules.length > 0 ? html`
+              <div class="remote-module-list">
+                ${selectedModules.map(mod => html`
+                  <button class="module-chip" @click=${() => { el.remoteModuleId = mod.id; }}>
+                    ${mod.id} (${mod.status})
+                  </button>
+                `)}
+              </div>
+            ` : ''}
+            <div class="panel-actions">
+              <button class="btn-secondary"
+                      @click=${() => el.dispatchSpokeModuleAction(el.remoteModuleId, 'enable')}>Enable</button>
+              <button class="btn-secondary"
+                      @click=${() => el.dispatchSpokeModuleAction(el.remoteModuleId, 'disable')}>Disable</button>
+              <button class="btn-secondary"
+                      @click=${() => el.dispatchSpokeModuleAction(el.remoteModuleId, 'restart')}>Restart</button>
+            </div>
+          </div>
+
+          <div class="fleet-panel">
+            <label class="field-label" for="module-bundle">Module Bundle</label>
+            <select id="module-bundle" class="field-input"
+                    .value=${el.deployModuleRef}
+                    @change=${(e) => { el.deployModuleRef = e.target.value; }}>
+              <option value="">Select bundle</option>
+              ${moduleBundleOptions.map(ref => html`<option value=${ref}>${ref}</option>`)}
+            </select>
+            <div class="panel-actions">
+              <button class="btn-primary" @click=${() => el.dispatchModuleDeploy()}>Deploy Module</button>
+            </div>
+          </div>
+
+          <div class="fleet-panel">
+            <label class="field-label" for="firmware-bundle">Firmware Bundle</label>
+            <select id="firmware-bundle" class="field-input"
+                    .value=${el.deployFirmwareRef}
+                    @change=${(e) => { el.deployFirmwareRef = e.target.value; }}>
+              <option value="">Select firmware</option>
+              ${firmwareBundleOptions.map(ref => html`<option value=${ref}>${ref}</option>`)}
+            </select>
+            <label class="field-label" for="firmware-source-id">Source ID</label>
+            <input id="firmware-source-id" class="field-input" type="text" placeholder="uno-main"
+                   .value=${el.firmwareSourceId}
+                   @input=${(e) => { el.firmwareSourceId = e.target.value; }}>
+            <div class="panel-actions">
+              <button class="btn-primary" @click=${() => el.dispatchFirmwareDeploy()}>Deploy Firmware</button>
+              <button class="btn-secondary" @click=${() => el.dispatchFirmwareRollback()}>Rollback</button>
+            </div>
+          </div>
+        </div>
+      `}
+    </section>
+  `;
+}
+
+export function render(el) {
+  return html`
+    <section>
+      <h3>Local Modules</h3>
+      ${renderLocalModules(el)}
+    </section>
+    ${el.fleetEnabled
+      ? renderSpokeControls(el)
+      : html`
+        <section class="fleet-section">
+          <h3>Spokes</h3>
+          <div class="empty">Fleet controls are available on hub nodes only.</div>
+        </section>
+      `}
   `;
 }

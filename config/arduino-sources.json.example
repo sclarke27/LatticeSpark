@@ -1,0 +1,64 @@
+{
+  "sources": [
+    {
+      "sourceId": "greenhouse-main",
+      "enabled": true,
+      "port": "/dev/ttyACM0",
+      "baud": 115200,
+      "boardProfile": "uno",
+      "mcu": "atmega328p",
+      "programmer": "arduino",
+      "channelMap": {
+        "soil": {
+          "componentId": "soil_moisture",
+          "label": "Soil Moisture",
+          "type": "ArduinoFloat",
+          "category": "arduino",
+          "unit": "raw",
+          "precision": 2
+        },
+        "light": {
+          "componentId": "light_level",
+          "label": "Light Level",
+          "type": "ArduinoFloat",
+          "category": "arduino",
+          "unit": "raw",
+          "precision": 2
+        },
+        "temperatureCh1": {
+          "componentId": "temperature_ch1",
+          "label": "Temperature Ch1",
+          "type": "ArduinoFloat",
+          "category": "arduino",
+          "unit": "C",
+          "precision": 2
+        },
+        "temperatureCh2": {
+          "componentId": "temperature_ch2",
+          "label": "Temperature Ch2",
+          "type": "ArduinoFloat",
+          "category": "arduino",
+          "unit": "C",
+          "precision": 2
+        },
+        "humidityCh1": {
+          "componentId": "humidity_ch1",
+          "label": "Humidity Ch1",
+          "type": "ArduinoFloat",
+          "category": "arduino",
+          "unit": "%",
+          "precision": 2
+        },
+        "humidityCh2": {
+          "componentId": "humidity_ch2",
+          "label": "Humidity Ch2",
+          "type": "ArduinoFloat",
+          "category": "arduino",
+          "unit": "%",
+          "precision": 2
+        }
+      }
+    }
+  ]
+}
+

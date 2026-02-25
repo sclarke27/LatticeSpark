@@ -2,10 +2,12 @@
   "name": "Segment Clock",
   "description": "Displays current time on the 7-segment display with blinking colon",
   "version": "1.0.0",
-  "enabled": true,
+  "enabled": false,
   "components": {
     "read": [],
-    "write": ["segment_display"]
+    "write": [
+      "segment_display"
+    ]
   },
   "triggers": {
     "interval": 1000

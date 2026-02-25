@@ -9,56 +9,37 @@
  * - Automatic cleanup of old data
  */
 
-import express from 'express';
 import initSqlJs from 'sql.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'fs';
-import { writeFile } from 'fs/promises';
+import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from 'fs';
+import { writeFile, rename } from 'fs/promises';
+import { BaseService } from './base-service.js';
+import { createLogger } from '../utils/logger.js';
 
-// Prevent unhandled promise rejections from crashing the service
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('[storage-service] Unhandled promise rejection:', reason);
-});
-
+const log = createLogger('storage-service');
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const PORT = process.env.STORAGE_SERVICE_PORT || 3001;
 const DB_PATH = process.env.DB_PATH || join(__dirname, '..', '..', 'data', 'sensors.db');
-const RETENTION_HOURS = parseInt(process.env.RETENTION_HOURS || '24', 10);
-
-const app = express();
-app.use(express.json());
+const RETENTION_HOURS = parseInt(process.env.RETENTION_HOURS || '168', 10);
 
 let SQL = null;
 let db = null;
+let recoveryInProgress = false;
 
-// Initialize database
-async function initializeDatabase() {
-  // Ensure data directory exists
-  const dataDir = dirname(DB_PATH);
-  if (!existsSync(dataDir)) {
-    mkdirSync(dataDir, { recursive: true });
-  }
+function isCorruptionError(error) {
+  const msg = String(error?.message || '').toLowerCase();
+  return (
+    msg.includes('database disk image is malformed') ||
+    msg.includes('file is not a database') ||
+    msg.includes('database schema is malformed')
+  );
+}
 
-  console.log('Loading SQLite...');
-  SQL = await initSqlJs();
-
-  console.log('Initializing database:', DB_PATH);
-
-  // Load existing database or create new one
-  if (existsSync(DB_PATH)) {
-    const buffer = readFileSync(DB_PATH);
-    db = new SQL.Database(buffer);
-    console.log('✓ Existing database loaded');
-  } else {
-    db = new SQL.Database();
-    console.log('✓ New database created');
-  }
-
-  // Create schema
-  db.run(`
+function initializeSchema(database) {
+  database.run(`
     CREATE TABLE IF NOT EXISTS sensor_readings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sensor_id TEXT NOT NULL,
@@ -70,34 +51,99 @@ async function initializeDatabase() {
     )
   `);
 
-  db.run(`
+  database.run(`
     CREATE INDEX IF NOT EXISTS idx_sensor_timestamp
       ON sensor_readings(sensor_id, timestamp DESC)
   `);
 
-  db.run(`
+  database.run(`
     CREATE INDEX IF NOT EXISTS idx_metric_timestamp
       ON sensor_readings(sensor_id, metric, timestamp DESC)
   `);
+}
 
-  console.log('✓ Database schema ready');
+function buildCorruptBackupPath() {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  return `${DB_PATH}.corrupt-${stamp}.bak`;
+}
 
-  // Start periodic save and cleanup
-  startPeriodicTasks();
+function recoverDatabase(reason, error) {
+  if (recoveryInProgress) return;
+  recoveryInProgress = true;
+  try {
+    log.error({ err: error, reason }, 'Recovering database');
+
+    try {
+      if (db) db.close();
+    } catch {}
+
+    if (existsSync(DB_PATH)) {
+      try {
+        const backupPath = buildCorruptBackupPath();
+        renameSync(DB_PATH, backupPath);
+        log.error('Corrupt DB backed up: %s', backupPath);
+      } catch (backupErr) {
+        log.error({ err: backupErr }, 'Failed to backup corrupt DB');
+      }
+    }
+
+    db = new SQL.Database();
+    initializeSchema(db);
+    saveDatabaseToFileSync();
+    log.info('Recovery complete with fresh database');
+  } finally {
+    recoveryInProgress = false;
+  }
+}
+
+// Initialize database
+async function initializeDatabase() {
+  // Ensure data directory exists
+  const dataDir = dirname(DB_PATH);
+  if (!existsSync(dataDir)) {
+    mkdirSync(dataDir, { recursive: true });
+  }
+
+  log.info('Loading SQLite...');
+  SQL = await initSqlJs();
+
+  log.info('Initializing database: %s', DB_PATH);
+
+  // Load existing database or create new one
+  if (existsSync(DB_PATH)) {
+    try {
+      const buffer = readFileSync(DB_PATH);
+      db = new SQL.Database(buffer);
+      initializeSchema(db);
+      log.info('Existing database loaded');
+    } catch (err) {
+      if (!isCorruptionError(err)) throw err;
+      recoverDatabase('startup-load', err);
+    }
+  } else {
+    db = new SQL.Database();
+    initializeSchema(db);
+    log.info('New database created');
+  }
+
+  log.info('Database schema ready');
 }
 
 // Save database to file (async to avoid blocking event loop)
 let saveInProgress = false;
 
 async function saveDatabaseToFile() {
+  if (!db || recoveryInProgress) return;
   if (saveInProgress) return; // skip if previous save still running
   saveInProgress = true;
   try {
     const data = db.export();
     const buffer = Buffer.from(data);
-    await writeFile(DB_PATH, buffer);
+    const tmpPath = `${DB_PATH}.tmp`;
+    await writeFile(tmpPath, buffer);
+    await rename(tmpPath, DB_PATH);
   } catch (err) {
-    console.error('[storage-service] Failed to save database:', err.message);
+    log.error({ err }, 'Failed to save database');
   } finally {
     saveInProgress = false;
   }
@@ -105,9 +151,12 @@ async function saveDatabaseToFile() {
 
 // Synchronous save for shutdown (must complete before exit)
 function saveDatabaseToFileSync() {
+  if (!db) return;
   const data = db.export();
   const buffer = Buffer.from(data);
-  writeFileSync(DB_PATH, buffer);
+  const tmpPath = `${DB_PATH}.tmp`;
+  writeFileSync(tmpPath, buffer);
+  renameSync(tmpPath, DB_PATH);
 }
 
 // Store sensor reading
@@ -219,30 +268,27 @@ function cleanupOldData() {
 
   const changes = db.getRowsModified();
   if (changes > 0) {
-    console.log(`Cleaned up ${changes} old readings (older than ${RETENTION_HOURS}h)`);
+    log.info('Cleaned up %d old readings (older than %dh)', changes, RETENTION_HOURS);
     // Reclaim disk space after deleting rows (SQLite DELETE doesn't free pages)
     db.run('VACUUM');
   }
 }
 
+// ── Service ─────────────────────────────────────────────────────────────────
+
+const service = new BaseService('storage-service', { port: PORT });
+const { app } = service;
+
 // Periodic task handles for cleanup on shutdown
 const periodicTimers = [];
 
-// Start periodic tasks
 function startPeriodicTasks() {
-  // Save database to file every 10 seconds
+  periodicTimers.push(setInterval(() => saveDatabaseToFile(), 10000));
   periodicTimers.push(setInterval(() => {
-    saveDatabaseToFile();
-  }, 10000));
-
-  // Run cleanup every hour
-  periodicTimers.push(setInterval(() => {
-    console.log('Running cleanup task...');
+    log.info('Running cleanup task...');
     cleanupOldData();
     saveDatabaseToFile();
-  }, 3600000)); // 1 hour
-
-  // Run initial cleanup after 5 seconds
+  }, 3600000));
   periodicTimers.push(setTimeout(() => {
     cleanupOldData();
     saveDatabaseToFile();
@@ -263,7 +309,19 @@ app.post('/api/data', (req, res) => {
 
     res.json({ status: 'ok', stored: true });
   } catch (error) {
-    console.error('Error storing data:', error);
+    if (isCorruptionError(error)) {
+      try {
+        recoverDatabase('write-path', error);
+        const { sensorId, data, timestamp } = req.body;
+        const ts = timestamp || Date.now() / 1000;
+        storeSensorReading(sensorId, data, ts);
+        return res.json({ status: 'ok', stored: true, recovered: true });
+      } catch (recoveryErr) {
+        log.error({ err: recoveryErr }, 'Error recovering storage database');
+        return res.status(500).json({ error: recoveryErr.message });
+      }
+    }
+    log.error({ err: error }, 'Error storing data');
     res.status(500).json({ error: error.message });
   }
 });
@@ -276,7 +334,7 @@ app.get('/api/history/:sensorId', (req, res) => {
 
     const startTs = start ? parseFloat(start) : null;
     const endTs = end ? parseFloat(end) : null;
-    const MAX_LIMIT = 10000;
+    const MAX_LIMIT = 50000;
     const limitNum = Math.min(limit ? parseInt(limit, 10) || 1000 : 1000, MAX_LIMIT);
 
     const results = queryHistory(sensorId, metric, startTs, endTs, limitNum);
@@ -288,7 +346,7 @@ app.get('/api/history/:sensorId', (req, res) => {
       data: results
     });
   } catch (error) {
-    console.error('Error querying history:', error);
+    log.error({ err: error }, 'Error querying history');
     res.status(500).json({ error: error.message });
   }
 });
@@ -313,7 +371,7 @@ app.get('/api/sensors', (req, res) => {
       stmt.free();
     }
   } catch (error) {
-    console.error('Error getting sensors:', error);
+    log.error({ err: error }, 'Error getting sensors');
     res.status(500).json({ error: error.message });
   }
 });
@@ -344,13 +402,13 @@ app.get('/api/sensors/:sensorId/metrics', (req, res) => {
       stmt.free();
     }
   } catch (error) {
-    console.error('Error getting metrics:', error);
+    log.error({ err: error }, 'Error getting metrics');
     res.status(500).json({ error: error.message });
   }
 });
 
-// REST API: Health check
-app.get('/health', (req, res) => {
+// Health check
+service.registerHealthCheck(async () => {
   const stmt = db.prepare(`
     SELECT
       COUNT(*) as total_readings,
@@ -367,7 +425,7 @@ app.get('/health', (req, res) => {
     stmt.free();
   }
 
-  res.json({
+  return {
     status: 'ok',
     database: 'connected',
     retention_hours: RETENTION_HOURS,
@@ -377,51 +435,37 @@ app.get('/health', (req, res) => {
       newest_reading: stats.newest_reading ? new Date(stats.newest_reading * 1000).toISOString() : null
     },
     uptime: process.uptime()
-  });
+  };
 });
 
-// Shutdown handler
-function shutdown(signal) {
-  console.log('');
-  console.log(`Received ${signal}, shutting down...`);
+// Override initialize to set up database
+const originalInitialize = service.initialize.bind(service);
+service.initialize = async () => {
+  await originalInitialize();
+  try {
+    await initializeDatabase();
+    startPeriodicTasks();
+  } catch (err) {
+    log.error({ err }, 'Failed to initialize database');
+    process.exit(1);
+  }
+  log.info('Ready - Retention: %d hours', RETENTION_HOURS);
+  log.info('Database: %s', DB_PATH);
+  log.info('Auto-save every 10 seconds');
+};
 
-  // Clear periodic timers
+// Override onShutdown for database cleanup
+service.onShutdown = async () => {
   periodicTimers.forEach(id => clearTimeout(id));
   periodicTimers.length = 0;
 
   if (db) {
-    console.log('Saving database...');
+    log.info('Saving database...');
     saveDatabaseToFileSync();
-    console.log('Closing database...');
+    log.info('Closing database...');
     db.close();
   }
+};
 
-  process.exit(0);
-}
-
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-
-// Handle port binding errors
-const httpServer = app.listen(PORT);
-httpServer.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`[storage-service] Port ${PORT} already in use. Kill the old process or choose a different port.`);
-  } else {
-    console.error('[storage-service] Server error:', err.message);
-  }
-  process.exit(1);
-});
-httpServer.on('listening', async () => {
-  console.log('='.repeat(60));
-  console.log(`Storage Service running on http://localhost:${PORT}`);
-  console.log('='.repeat(60));
-  console.log('');
-
-  await initializeDatabase();
-
-  console.log('');
-  console.log(`✓ Ready - Retention: ${RETENTION_HOURS} hours`);
-  console.log(`✓ Database: ${DB_PATH}`);
-  console.log(`✓ Auto-save every 10 seconds`);
-});
+// Start the service
+service.start();

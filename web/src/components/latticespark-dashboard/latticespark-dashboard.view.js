@@ -3,8 +3,6 @@ import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import { themes, getThemeList } from './theme-registry.js';
 import { modulePages } from '../../module-manifest.js';
 
-// Map component types to their card tag names.
-// To add a new card: add its type here and import it in latticespark-dashboard.js.
 const CARD_REGISTRY = {
   LCD1602: 'lcd-card',
   Vibration: 'vibration-card',
@@ -40,7 +38,6 @@ function getStatusText(el) {
 }
 
 function getLedClass(el, index) {
-  // 0=PWR, 1=LINK, 2=ERR
   if (index === 0) return el.connected ? 'on-green' : 'off';
   if (index === 1) return el.reconnecting ? 'on-amber' : (el.connected ? 'on-green' : 'off');
   return (!el.connected && !el.reconnecting) ? 'on-red' : 'off';
@@ -53,8 +50,6 @@ function getStatusDotClass(el) {
   return 'on-red';
 }
 
-// ── Shared Fragments ──
-
 function renderThemeSelector(el) {
   const list = getThemeList();
   return html`
@@ -66,13 +61,25 @@ function renderThemeSelector(el) {
   `;
 }
 
-// ── Default Header ──
+function renderRuntimeIdentity(el) {
+  const nodeId = el.localNodeId || 'local';
+  const role = el.localRole || 'standalone';
+  return html`
+    <div class="runtime-identity" title="Local runtime identity">
+      <span class="runtime-chip">Node: ${nodeId}</span>
+      <span class="runtime-chip">Role: ${role}</span>
+    </div>
+  `;
+}
 
 function renderDefaultHeader(el) {
   return html`
     <div class="header">
       <div class="header-content">
-        <h1>LatticeSpark Dashboard</h1>
+        <div class="header-left">
+          <h1>LatticeSpark Dashboard</h1>
+          ${renderRuntimeIdentity(el)}
+        </div>
         <div class="header-right">
           ${renderThemeSelector(el)}
           <div class="status">
@@ -85,16 +92,19 @@ function renderDefaultHeader(el) {
   `;
 }
 
-// ── Universal Themed Chrome ──
-
 function renderThemedTopBar(el, config) {
   return html`
     <div class="chrome-top-bar">
       <div class="chrome-brand">
         ${config.brandDot ? html`<span class="chrome-brand-dot">${config.brandDot}</span>` : ''}
-        <h1 class="chrome-title">${config.brandTitle}</h1>
-        ${config.brandSub ? html`<span class="chrome-brand-sub">${config.brandSub}</span>` : ''}
-        ${config.modelBadge ? html`<span class="chrome-badge">${config.modelBadge}</span>` : ''}
+        <div class="chrome-brand-stack">
+          <div class="chrome-brand-head">
+            <h1 class="chrome-title">${config.brandTitle}</h1>
+            ${config.brandSub ? html`<span class="chrome-brand-sub">${config.brandSub}</span>` : ''}
+            ${config.modelBadge ? html`<span class="chrome-badge">${config.modelBadge}</span>` : ''}
+          </div>
+          ${renderRuntimeIdentity(el)}
+        </div>
       </div>
       <div class="chrome-right">
         ${config.leds ? html`
@@ -139,8 +149,6 @@ function renderThemedBottomBar(config) {
   `;
 }
 
-// ── Tab Bar ──
-
 function renderTabBar(el) {
   return html`
     <div class="tab-bar">
@@ -162,8 +170,8 @@ function renderTabBar(el) {
   `;
 }
 
-// Track which module pages have been loaded
 const loadedPages = new Set();
+const SAFE_ID_RE = /^[a-z][a-z0-9-]*$/;
 
 export function loadModulePage(moduleId) {
   if (loadedPages.has(moduleId)) return;
@@ -173,8 +181,6 @@ export function loadModulePage(moduleId) {
     loadedPages.add(moduleId);
   }
 }
-
-const SAFE_ID_RE = /^[a-z][a-z0-9-]*$/;
 
 function renderModulePage(el) {
   const moduleId = el.activeView;
@@ -188,11 +194,59 @@ function renderModulePage(el) {
   ></${tag}>`;
 }
 
-// ── Main Render ──
+function groupComponentsByNode(components) {
+  const groups = new Map();
+  for (const component of components) {
+    if (component.type === 'Camera') continue;
+    const idx = component.id.indexOf('.');
+    const nodeId = idx > 0 ? component.id.slice(0, idx) : 'local';
+    if (!groups.has(nodeId)) groups.set(nodeId, []);
+    groups.get(nodeId).push(component);
+  }
+  return Array.from(groups.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([nodeId, nodeComponents]) => ({ nodeId, components: nodeComponents }));
+}
+
+function getNodeStatus(el, nodeId) {
+  if (nodeId === 'local') {
+    return el.connected ? 'online' : (el.reconnecting ? 'reconnecting' : 'offline');
+  }
+  const spoke = (el.spokes || []).find(s => s.nodeId === nodeId);
+  if (!spoke) return 'unknown';
+  return spoke.connected ? 'online' : 'offline';
+}
+
+function renderNodeGroup(el, group) {
+  const status = getNodeStatus(el, group.nodeId);
+  const spoke = (el.spokes || []).find(s => s.nodeId === group.nodeId);
+  return html`
+    <section class="node-group">
+      <header class="node-group-header">
+        <div class="node-title-wrap">
+          <span class="node-title">${group.nodeId}</span>
+          <span class="node-badge ${status}">${status}</span>
+        </div>
+        ${spoke ? html`
+          <div class="node-meta">
+            <span>Queue: ${spoke.queueDepth ?? 0}</span>
+            <span>Ack: ${spoke.replayAckSeq ?? 0}</span>
+          </div>
+        ` : ''}
+      </header>
+      <div class="sensors-grid">
+        ${group.components.map(component =>
+          renderCard(component, el.sensorData[component.id], el.theme)
+        )}
+      </div>
+    </section>
+  `;
+}
 
 export function render(el) {
   const config = themes[el.theme] || themes.default;
   const isDefault = !config.brandTitle;
+  const nodeGroups = groupComponentsByNode(el.components);
 
   return html`
     ${isDefault ? renderDefaultHeader(el) : renderThemedTopBar(el, config)}
@@ -202,18 +256,20 @@ export function render(el) {
       ${el.activeView === 'dashboard'
         ? (el.components.length === 0
             ? html`<div class="loading">Loading sensors...</div>`
-            : html`
-                <div class="sensors-grid">
-                  ${el.components
-                    .filter(component => component.type !== 'Camera')
-                    .map(component =>
-                      renderCard(component, el.sensorData[component.id], el.theme)
-                    )}
-                </div>
-              `
+            : html`<div class="nodes-stack">${nodeGroups.map(group => renderNodeGroup(el, group))}</div>`
           )
         : el.activeView === 'modules'
-          ? html`<modules-manager .modules=${el.allModules} theme=${el.theme}></modules-manager>`
+          ? html`<modules-manager
+              .modules=${el.allModules}
+              .spokes=${el.spokes}
+              .moduleBundles=${el.moduleBundles}
+              .firmwareBundles=${el.firmwareBundles}
+              .fleetError=${el.fleetError}
+              .fleetJobs=${el.fleetJobs}
+              .spokeModules=${el.spokeModules}
+              .fleetEnabled=${el.localRole === 'hub'}
+              theme=${el.theme}
+            ></modules-manager>`
           : renderModulePage(el)
       }
     </div>

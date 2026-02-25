@@ -1,0 +1,11 @@
+{
+  "role": "standalone",
+  "nodeId": "local",
+  "hubUrl": "http://localhost:3010",
+  "apiKey": "",
+  "spokeMode": "full",
+  "replay": {
+    "retentionHours": 72,
+    "maxDiskMb": 1024
+  }
+}

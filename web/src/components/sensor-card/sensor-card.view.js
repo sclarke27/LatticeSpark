@@ -1,5 +1,6 @@
 import { html } from 'lit';
 import { AXIS_COLORS } from '../shared/metrics-config.js';
+import { TIME_RANGES } from './time-ranges.js';
 
 const AXIS_LABELS = ['x', 'y', 'z'];
 
@@ -90,6 +91,13 @@ export function render(el) {
     <div class="card">
       <div class="card-header">
         <h3 class="card-title">${label}</h3>
+        <select class="time-range-select"
+                .value=${el.timeRange}
+                @change=${(e) => el.setTimeRange(e.target.value)}>
+          ${TIME_RANGES.map(r => html`
+            <option value=${r.id} ?selected=${r.id === el.timeRange}>${r.label}</option>
+          `)}
+        </select>
         <span class="card-type">${el.component.type}</span>
       </div>
 
