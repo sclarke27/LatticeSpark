@@ -194,8 +194,8 @@ export class SensorCard extends BaseChartCard {
     while (data.length > 0 && data[0].x.getTime() < cutoff) {
       data.shift();
     }
-    if (data.length > MAX_DISPLAY_POINTS) {
-      data.splice(0, data.length - MAX_DISPLAY_POINTS);
+    if (data.length > range.fetchLimit) {
+      data.splice(0, data.length - range.fetchLimit);
     }
 
     chart.update('none');
@@ -219,8 +219,8 @@ export class SensorCard extends BaseChartCard {
       while (data.length > 0 && data[0].x.getTime() < cutoff) {
         data.shift();
       }
-      if (data.length > MAX_DISPLAY_POINTS) {
-        data.splice(0, data.length - MAX_DISPLAY_POINTS);
+      if (data.length > range.fetchLimit) {
+        data.splice(0, data.length - range.fetchLimit);
       }
     });
 
