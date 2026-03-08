@@ -1,0 +1,19 @@
+{
+  "components": {},
+  "camera": {
+    "type": "Camera",
+    "label": "USB Camera",
+    "category": "vision",
+    "enabled": false,
+    "skipStorage": true,
+    "device": 0,
+    "resolution": [640, 480],
+    "fps": 15,
+    "jpeg_quality": 80,
+    "mjpeg_port": 8081,
+    "processors": {
+      "face_detector": { "enabled": false },
+      "motion_detector": { "enabled": false }
+    }
+  }
+}

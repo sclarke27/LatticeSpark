@@ -1,0 +1,11 @@
+{
+  "role": "spoke",
+  "nodeId": "spoke-01",
+  "hubUrl": "http://your-hub-ip-or-hostname:3010",
+  "apiKey": "CHANGE_ME_must_match_hub_api_key",
+  "spokeMode": "full",
+  "replay": {
+    "retentionHours": 72,
+    "maxDiskMb": 1024
+  }
+}

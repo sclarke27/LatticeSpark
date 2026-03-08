@@ -64,6 +64,14 @@ htmlcov/
 .pytest_cache/
 data/
 
+# Runtime config files (use .example-* files as templates)
+config/cluster.json
+config/components.json
+config/arduino-sources.json
+
+# Windows NUL artifact
+nul
+
 # Web build output
 web/dist/
 web/node_modules/

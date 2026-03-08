@@ -17,11 +17,13 @@ export class BaseService {
    * @param {string} name - Service name (used in logs and health check)
    * @param {Object} options
    * @param {number} options.port - Port to listen on
+   * @param {string} [options.host='127.0.0.1'] - Host to bind to (default: localhost only)
    * @param {Object} [options.expressOptions] - Options passed to express.json()
    */
-  constructor(name, { port, expressOptions } = {}) {
+  constructor(name, { port, host = '127.0.0.1', expressOptions } = {}) {
     this.name = name;
     this.port = port;
+    this.host = host;
     this.log = createLogger(name);
     this.app = express();
     this.httpServer = createServer(this.app);
@@ -69,8 +71,8 @@ export class BaseService {
     await this.initialize();
 
     return new Promise((resolve) => {
-      this.httpServer.listen(this.port, () => {
-        this.log.info('Listening on port %d', this.port);
+      this.httpServer.listen(this.port, this.host, () => {
+        this.log.info('Listening on %s:%d', this.host, this.port);
         resolve();
       });
     });

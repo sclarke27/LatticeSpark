@@ -26,6 +26,7 @@ export class LatticeSparkDashboard extends LitElement {
     activeView: { type: String },
     allModules: { type: Array },
     modulePages: { type: Array },
+    standaloneModules: { type: Array },
     moduleStates: { type: Object },
     spokes: { type: Array },
     moduleBundles: { type: Array },
@@ -50,6 +51,7 @@ export class LatticeSparkDashboard extends LitElement {
     this.activeView = 'dashboard';
     this.allModules = [];
     this.modulePages = [];
+    this.standaloneModules = [];
     this.moduleStates = {};
     this.spokes = [];
     this.moduleBundles = [];
@@ -61,7 +63,6 @@ export class LatticeSparkDashboard extends LitElement {
     this.localRole = 'standalone';
     this.socket = null;
     this.moduleSocket = null;
-    this._apiKey = null;
     this._clockInterval = null;
     this._fleetPollInterval = null;
     this._writeHandler = (e) => {
@@ -187,7 +188,6 @@ export class LatticeSparkDashboard extends LitElement {
     try {
       const resp = await fetch('/api/config');
       const config = await resp.json();
-      this._apiKey = config.apiKey || null;
       this.localNodeId = typeof config.nodeId === 'string' && config.nodeId.trim()
         ? config.nodeId.trim()
         : 'local';
@@ -195,8 +195,7 @@ export class LatticeSparkDashboard extends LitElement {
         ? config.role.trim()
         : 'standalone';
     } catch {
-      // Dev mode or config unavailable — connect without auth
-      this._apiKey = null;
+      // Dev mode or config unavailable
       this.localNodeId = 'local';
       this.localRole = 'standalone';
     }
@@ -370,7 +369,7 @@ export class LatticeSparkDashboard extends LitElement {
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 30000,
-      ...(this._apiKey ? { auth: { apiKey: this._apiKey } } : {})
+      // Auth is injected by the web proxy via X-API-Key header on upgrade
     });
 
     this.socket.on('connect', () => {
@@ -430,12 +429,13 @@ export class LatticeSparkDashboard extends LitElement {
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 30000,
-      ...(this._apiKey ? { auth: { apiKey: this._apiKey } } : {})
+      // Auth is injected by the web proxy via X-API-Key header on upgrade
     });
 
     this.moduleSocket.on('modules', (modules) => {
       this.allModules = modules;
       this.modulePages = modules.filter(m => m.ui?.page);
+      this.standaloneModules = modules.filter(m => m.ui?.standalone);
     });
 
     this.moduleSocket.on('module:state', ({ moduleId, state }) => {

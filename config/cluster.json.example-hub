@@ -1,0 +1,11 @@
+{
+  "role": "hub",
+  "nodeId": "hub-main",
+  "hubUrl": "http://localhost:3010",
+  "apiKey": "CHANGE_ME_generate_a_strong_random_key",
+  "spokeMode": "full",
+  "replay": {
+    "retentionHours": 72,
+    "maxDiskMb": 1024
+  }
+}

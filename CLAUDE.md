@@ -90,7 +90,7 @@ Parallel services:
 
 Disabled: `button_panel` (SPI ADC, Pi 5 CE1 incompatible), `voltage_sensor` (same).
 
-Config: [config/components.json](config/components.json)
+Config: `config/components.json` (gitignored — copy from `config/components.json.example-*`)
 
 ## Adding a New Component
 
@@ -165,14 +165,28 @@ See [MODULE_GUIDE.md](MODULE_GUIDE.md) for a full walkthrough.
 
 ## Authentication
 
-Shared API key via `LATTICESPARK_API_KEY` env var. No key = dev mode (no auth).
+Shared API key via `config/cluster.json` `apiKey` field or `LATTICESPARK_API_KEY` env var. No key = dev mode (no auth).
+
+All `/api` routes on every service require the API key when configured. Internal services bind to `127.0.0.1` by default — only the web server (port 8080) is publicly accessible.
 
 | Where | How |
 |-------|-----|
-| Socket.IO (sensor + module) | `io.use()` middleware checks `socket.handshake.auth.apiKey` |
-| Camera POST endpoints | `X-API-Key` header |
-| Web proxy | `proxyAuthHeaders()` injects `X-API-Key` on proxied REST |
-| Dashboard | Fetches key from `GET /api/config`, passes in Socket.IO `auth` |
+| REST APIs (all services) | `requireApiKey` middleware on `/api` routes; key via `X-API-Key` header |
+| Socket.IO (sensor + module + fleet) | `io.use()` middleware checks `auth.apiKey` or `X-API-Key` header |
+| Web proxy | Injects `X-API-Key` on proxied REST and WebSocket upgrade |
+| Dashboard | No longer receives the API key; auth is transparent via the proxy |
+
+Key comparison uses `crypto.timingSafeEqual` to prevent timing attacks.
+
+## Configuration
+
+Config files are **gitignored** — copy from the example templates:
+
+| File | Templates |
+|------|-----------|
+| `config/cluster.json` | `.example-standalone`, `.example-hub`, `.example-spoke` |
+| `config/components.json` | `.example-standalone`, `.example-hub`, `.example-spoke` |
+| `config/arduino-sources.json` | `.example` |
 
 ## Polling Rates
 

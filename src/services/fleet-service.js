@@ -156,7 +156,10 @@ function getFirmwareJob(nodeId, jobId) {
 
 io.use((socket, next) => {
   if (!API_KEY) return next();
-  if (socket.handshake.auth?.apiKey === API_KEY) return next();
+  const key = socket.handshake.auth?.apiKey
+    || socket.handshake.headers?.['x-api-key']
+    || '';
+  if (key === API_KEY) return next();
   log.warn('Rejected socket auth from %s', socket.handshake.address || 'unknown');
   next(new Error('unauthorized'));
 });

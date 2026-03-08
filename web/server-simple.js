@@ -10,6 +10,7 @@ import { createServer } from 'http';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { readdir, readFile } from 'node:fs/promises';
 import { loadClusterConfig } from '../src/cluster/cluster-config.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -34,7 +35,7 @@ app.use(express.static(join(__dirname, 'dist')));
 
 app.get('/api/config', (req, res) => {
   res.json({
-    apiKey: API_KEY || null,
+    authEnabled: Boolean(API_KEY),
     role: ROLE,
     nodeId: NODE_ID
   });
@@ -150,6 +151,10 @@ const wsProxy = createProxyMiddleware({
 });
 
 httpServer.on('upgrade', (req, socket, head) => {
+  // Inject API key header so backend Socket.IO auth passes through the proxy
+  if (API_KEY) {
+    req.headers['x-api-key'] = API_KEY;
+  }
   if (req.url.startsWith('/modules-io')) {
     moduleWsProxy.upgrade(req, socket, head);
   } else {
@@ -184,6 +189,30 @@ app.get('/health', async (req, res) => {
     dependencies: { sensor, storage, module, fleet }
   });
 });
+
+// Serve standalone module UIs at /module-ui/<moduleId>/
+const MODULES_DIR = join(dirname(__dirname), 'modules');
+
+async function mountStandaloneModuleUIs() {
+  try {
+    const entries = await readdir(MODULES_DIR, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const configPath = join(MODULES_DIR, entry.name, 'module.json');
+      try {
+        const raw = await readFile(configPath, 'utf-8');
+        const config = JSON.parse(raw);
+        if (config.ui?.standalone) {
+          const uiDir = join(MODULES_DIR, entry.name, 'ui');
+          app.use(`/module-ui/${entry.name}`, express.static(uiDir));
+          console.log(`OK Serving standalone UI: /module-ui/${entry.name}/ -> ${uiDir}`);
+        }
+      } catch { /* skip modules without module.json or without standalone UI */ }
+    }
+  } catch { /* modules dir doesn't exist yet */ }
+}
+
+await mountStandaloneModuleUIs();
 
 app.get('*', (req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));

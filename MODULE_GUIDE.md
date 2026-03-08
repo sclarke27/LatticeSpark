@@ -62,7 +62,7 @@ This file declares what your module needs.
 | `ui.page` | No | `true` to show a tab in the dashboard |
 | `ui.label` | No | Tab label text |
 
-Component IDs come from `config/components.json` (e.g., `temperature_sensor`, `lcd_display`, `pixelstrip`, `buzzer`).
+Component IDs come from your local `config/components.json` (e.g., `temperature_sensor`, `lcd_display`, `pixelstrip`, `buzzer`). Config files are gitignored — copy from the `.example-*` templates if you don't have one yet.
 
 ---
 
@@ -325,7 +325,7 @@ Vite HMR will pick up UI changes automatically in dev mode. For module logic cha
 
 ### Module REST API
 
-Control modules at runtime:
+Control modules at runtime (add `-H "X-API-Key: <key>"` when auth is configured):
 
 ```bash
 # List all modules
@@ -339,18 +339,20 @@ curl -X POST http://localhost:3002/api/modules/my-module/disable
 curl -X POST http://localhost:3002/api/modules/my-module/restart
 ```
 
+Note: Internal services bind to `127.0.0.1` by default. Use the web proxy (port 8080) to reach them from other machines.
+
 ---
 
 ## Complete Example
 
-The `modules/hello-world/` directory is a complete working module with:
+The [latticeSpark-example-modules](https://github.com/sclarke27/latticeSpark-example-modules) repository contains complete working modules including `hello-world` with:
 - Interval-based temperature logging
 - Sensor change detection
 - LCD display writing via `handleCommand`
 - UI page with sensor data display and interactive controls
 - State management with `emitState()`
 
-Use it as your starting template.
+Clone it into your `modules/` directory to use as a starting template.
 
 ---
 
@@ -360,4 +362,4 @@ Use it as your starting template.
 - **Use `emitState()` to sync UI.** Call it whenever your module's state changes — the UI page re-renders automatically.
 - **Persist important state.** Use `getState()`/`setState()` for anything that should survive a restart.
 - **Clean up in `cleanup()`.** Turn off actuators and save state. The framework calls this on shutdown and when a module is disabled.
-- **Check component IDs.** Use the IDs from `config/components.json`, not display labels.
+- **Check component IDs.** Use the IDs from your local `config/components.json`, not display labels.

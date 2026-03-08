@@ -56,10 +56,13 @@ const io = new Server(httpServer, {
   }
 });
 
-// Socket.IO auth: require API key when configured
+// Socket.IO auth: require API key when configured (via auth object or X-API-Key header)
 if (API_KEY) {
   io.use((socket, next) => {
-    if (socket.handshake.auth?.apiKey === API_KEY) return next();
+    const key = socket.handshake.auth?.apiKey
+      || socket.handshake.headers?.['x-api-key']
+      || '';
+    if (key === API_KEY) return next();
     next(new Error('unauthorized'));
   });
 }
@@ -403,6 +406,9 @@ async function writeToRemoteComponent(nodeId, componentId, data, ownerId, leaseT
   return payload;
 }
 
+// Require API key for all REST endpoints (when configured)
+app.use('/api', requireApiKey);
+
 // REST API: Get all sensors
 app.get('/api/sensors', (req, res) => {
   const localComponents = getLocalComponents();
@@ -450,7 +456,8 @@ app.get('/api/sensors/:id/read', async (req, res) => {
       timestamp: Date.now()
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    log.error({ componentId, err: error }, 'Sensor read failed');
+    res.status(500).json({ error: 'Sensor read failed' });
   }
 });
 
