@@ -26,7 +26,14 @@ pip3 install -r requirements.txt --break-system-packages
 
 ## 3. Configure the hub (CrowPi3)
 
-Create/update `config/cluster.json` on hub:
+Copy the hub template and edit:
+
+```bash
+cp config/cluster.json.example-hub config/cluster.json
+cp config/components.json.example-hub config/components.json
+```
+
+Edit `config/cluster.json`:
 
 ```json
 {
@@ -53,7 +60,14 @@ pnpm run services
 
 ## 4. Configure the spoke (Pi + Arduino)
 
-Create/update `config/cluster.json` on spoke:
+Copy the spoke templates:
+
+```bash
+cp config/cluster.json.example-spoke config/cluster.json
+cp config/components.json.example-spoke config/components.json
+```
+
+Edit `config/cluster.json`:
 
 ```json
 {
@@ -69,7 +83,13 @@ Create/update `config/cluster.json` on spoke:
 }
 ```
 
-Create/update `config/arduino-sources.json` on spoke:
+Copy and edit `config/arduino-sources.json`:
+
+```bash
+cp config/arduino-sources.json.example config/arduino-sources.json
+```
+
+Edit `config/arduino-sources.json`:
 
 ```json
 {

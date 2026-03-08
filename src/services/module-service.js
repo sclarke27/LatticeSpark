@@ -9,6 +9,7 @@ import { loadClusterConfig } from '../cluster/cluster-config.js';
 import { withTimeout } from '../utils/timeout.js';
 import { atomicWriteJson } from '../utils/persistence.js';
 import { CircuitBreaker } from '../utils/circuit-breaker.js';
+import { requireApiKey as createApiKeyMiddleware } from '../utils/auth.js';
 import { BaseService } from './base-service.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -484,6 +485,9 @@ function getModuleList() {
 // ── Express REST API ────────────────────────────────────────────────────────
 
 function registerRoutes(app) {
+  // Require API key for all REST endpoints (when configured)
+  app.use('/api', createApiKeyMiddleware(API_KEY));
+
   // List all modules
   app.get('/api/modules', (req, res) => {
     res.json(getModuleList());
@@ -522,7 +526,8 @@ function registerRoutes(app) {
       const result = await rescanModules();
       res.json(result);
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      log.error({ err }, 'Module rescan failed');
+      res.status(500).json({ error: 'Module rescan failed' });
     }
   });
 
@@ -539,7 +544,8 @@ function registerRoutes(app) {
       const result = await entry.instance.handleCommand(command, params || {});
       res.json({ success: true, result: result ?? null });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      log.error({ moduleId: req.params.id, err }, 'Module command failed');
+      res.status(500).json({ error: 'Module command failed' });
     }
   });
 
@@ -554,10 +560,13 @@ function setupSocketIO(httpServer) {
     cors: { origin: '*', methods: ['GET', 'POST'] }
   });
 
-  // Socket.IO auth: require API key when configured
+  // Socket.IO auth: require API key when configured (via auth object or X-API-Key header)
   if (API_KEY) {
     moduleIo.use((socket, next) => {
-      if (socket.handshake.auth?.apiKey === API_KEY) return next();
+      const key = socket.handshake.auth?.apiKey
+        || socket.handshake.headers?.['x-api-key']
+        || '';
+      if (key === API_KEY) return next();
       next(new Error('unauthorized'));
     });
   }

@@ -35,7 +35,14 @@ If `LATTICESPARK_ADMIN_TOKEN` is not set, fleet admin endpoints fall back to `LA
 
 ## 3. Configure the Hub
 
-Edit `config/cluster.json` on the hub:
+Copy the hub template and edit:
+
+```bash
+cp config/cluster.json.example-hub config/cluster.json
+cp config/components.json.example-hub config/components.json
+```
+
+Edit `config/cluster.json` — set `apiKey` to your shared secret:
 
 ```json
 {
@@ -54,10 +61,19 @@ Edit `config/cluster.json` on the hub:
 Notes:
 - `role` must be `hub`.
 - `hubUrl` is not used by hub services directly; keep it local.
+- Config files are gitignored — `git pull` will not overwrite your local configs.
 - `config/cluster.json` is the default source of role/node/API key; env vars override only when explicitly set.
 - For temporary no-auth mode during bring-up, set `"disableAuth": true` on hub and spokes.
 
 ## 4. Configure Each Spoke
+
+Copy the spoke templates and edit:
+
+```bash
+cp config/cluster.json.example-spoke config/cluster.json
+cp config/components.json.example-spoke config/components.json
+cp config/arduino-sources.json.example config/arduino-sources.json
+```
 
 Edit `config/cluster.json` on each spoke with a unique `nodeId`:
 
@@ -81,7 +97,7 @@ Notes:
 
 ## 5. Configure Arduino Sources on Spokes
 
-Edit `config/arduino-sources.json` on each spoke.
+Edit `config/arduino-sources.json` on each spoke (copied from `.example` in step 4).
 This file is consumed by `sensor-service` (not `spoke-agent-service`).
 
 - Enable one or more sources (`enabled: true`)

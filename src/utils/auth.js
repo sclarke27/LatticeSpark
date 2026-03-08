@@ -2,6 +2,21 @@
  * Shared API key extraction and Express auth middleware.
  */
 
+import crypto from 'node:crypto';
+
+/**
+ * Timing-safe string comparison to prevent side-channel attacks.
+ *
+ * @param {string} a
+ * @param {string} b
+ * @returns {boolean}
+ */
+function safeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
 /**
  * Extract API key from request headers.
  * Checks x-api-key, x-latticespark-api-key, and Authorization: Bearer.
@@ -26,7 +41,7 @@ export function getApiKey(req) {
 export function requireApiKey(apiKey) {
   return (req, res, next) => {
     if (!apiKey) return next();
-    if (getApiKey(req) === apiKey) return next();
+    if (safeEqual(getApiKey(req), apiKey)) return next();
     res.status(401).json({ error: 'unauthorized' });
   };
 }
@@ -45,7 +60,7 @@ export function requireAdminToken(adminToken, apiKey) {
     const token = req.headers['x-admin-token']
       || req.headers['x-latticespark-admin']
       || getApiKey(req);
-    if (token === adminToken) return next();
+    if (safeEqual(token, adminToken)) return next();
     res.status(403).json({ error: 'admin token required' });
   };
 }

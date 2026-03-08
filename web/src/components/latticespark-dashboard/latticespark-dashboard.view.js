@@ -166,6 +166,12 @@ function renderTabBar(el) {
           ${mod.ui?.label || mod.name}
         </button>
       `)}
+      ${el.standaloneModules.map(mod => html`
+        <a class="tab-item" href="/module-ui/${mod.id}/" target="_blank"
+           title="Opens in new tab">
+          ${mod.ui?.label || mod.name} ↗
+        </a>
+      `)}
     </div>
   `;
 }

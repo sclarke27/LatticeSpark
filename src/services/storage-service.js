@@ -15,6 +15,8 @@ import { dirname, join } from 'path';
 import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from 'fs';
 import { writeFile, rename } from 'fs/promises';
 import { BaseService } from './base-service.js';
+import { requireApiKey as createApiKeyMiddleware } from '../utils/auth.js';
+import { loadClusterConfig } from '../cluster/cluster-config.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('storage-service');
@@ -276,8 +278,14 @@ function cleanupOldData() {
 
 // ── Service ─────────────────────────────────────────────────────────────────
 
+const clusterConfig = loadClusterConfig();
+const API_KEY = clusterConfig.apiKey || '';
+
 const service = new BaseService('storage-service', { port: PORT });
 const { app } = service;
+
+// Require API key for all REST endpoints (when configured)
+app.use('/api', createApiKeyMiddleware(API_KEY));
 
 // Periodic task handles for cleanup on shutdown
 const periodicTimers = [];
@@ -318,11 +326,11 @@ app.post('/api/data', (req, res) => {
         return res.json({ status: 'ok', stored: true, recovered: true });
       } catch (recoveryErr) {
         log.error({ err: recoveryErr }, 'Error recovering storage database');
-        return res.status(500).json({ error: recoveryErr.message });
+        return res.status(500).json({ error: 'Storage write failed' });
       }
     }
     log.error({ err: error }, 'Error storing data');
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Storage write failed' });
   }
 });
 
@@ -347,7 +355,7 @@ app.get('/api/history/:sensorId', (req, res) => {
     });
   } catch (error) {
     log.error({ err: error }, 'Error querying history');
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Query failed' });
   }
 });
 
@@ -372,7 +380,7 @@ app.get('/api/sensors', (req, res) => {
     }
   } catch (error) {
     log.error({ err: error }, 'Error getting sensors');
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Query failed' });
   }
 });
 
@@ -403,7 +411,7 @@ app.get('/api/sensors/:sensorId/metrics', (req, res) => {
     }
   } catch (error) {
     log.error({ err: error }, 'Error getting metrics');
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Query failed' });
   }
 });
 

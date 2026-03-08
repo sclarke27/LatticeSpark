@@ -24,6 +24,10 @@ CrowPi3 and can interface with all **23 on-board components and USB camera**.
 cd ~/latticespark
 pnpm install
 pip3 install -r requirements.txt --break-system-packages
+
+# Copy config templates (pick standalone, hub, or spoke)
+cp config/cluster.json.example-standalone config/cluster.json
+cp config/components.json.example-standalone config/components.json
 ```
 
 ### Run
@@ -133,7 +137,7 @@ Parallel services:
 
 **Key design decisions:**
 - **Single Python process** for all hardware — efficient I2C bus sharing
-- **Configuration-driven** — add components via `config/components.json`
+- **Configuration-driven** — add components via `config/components.json` (gitignored; copy from `.example-*` templates)
 - **Auto-discovery** for drivers and modules — zero registration edits needed
 - **Testable without hardware** — mocked drivers, 80%+ coverage target
 - **24/7 reliable** — PM2, circuit breakers, exponential backoff, health checks
@@ -183,13 +187,9 @@ Parallel services:
 
 Modules add custom automation and UI pages without modifying the core framework. They are auto-discovered from the `modules/` directory.
 
-### Installed Modules
+### Example Modules
 
-| Module | Description | UI Page |
-|--------|-------------|---------|
-| hello-world | Example — logs temperature, writes to LCD | Yes |
-| segment-clock | 12-hour clock on 7-segment display | No |
-| camera-view | Live camera feed with ML processor controls | Yes |
+Example modules have been moved to the [latticeSpark-example-modules](https://github.com/sclarke27/latticeSpark-example-modules) repository.
 
 ### Creating a Module
 
@@ -207,7 +207,7 @@ pnpm run services:restart   # or restart module-service
 
 Module ID must be kebab-case with at least one hyphen (e.g., `my-module`).
 
-See `modules/hello-world/` for a complete working example, or the [Module Guide](MODULE_GUIDE.md) for a full walkthrough.
+See the [latticeSpark-example-modules](https://github.com/sclarke27/latticeSpark-example-modules) repo for working examples, or the [Module Guide](MODULE_GUIDE.md) for a full walkthrough.
 
 ### Module API
 
@@ -222,7 +222,9 @@ Modules extend `BaseModule` and access hardware through `this.ctx`:
 | `emitState(obj)` | Push state to UI page via Socket.IO |
 | `log(msg)` / `warn(msg)` / `error(msg)` | Prefixed logging |
 
-### Module REST API (port 3002)
+### Module REST API (via web proxy, port 8080)
+
+All module endpoints require `X-API-Key` header when auth is configured.
 
 ```
 GET  /api/modules              # List all modules + status
@@ -251,14 +253,23 @@ Three themes with a token-driven architecture (~130 CSS custom properties per th
 
 ## Authentication
 
-Optional shared API key via `LATTICESPARK_API_KEY` environment variable. No key = dev mode (auth skipped).
+API key is set in `config/cluster.json` (`apiKey` field) or via `LATTICESPARK_API_KEY` env var. No key = dev mode (auth skipped).
 
 ```bash
+# Option 1: Set in config/cluster.json (recommended)
+# "apiKey": "your-secret-key-here"
+
+# Option 2: Environment variable
 export LATTICESPARK_API_KEY="your-secret-key-here"
 pnpm run services
 ```
 
-Protects: Socket.IO connections, camera POST endpoints, web proxy to internal services. The dashboard auto-fetches the key from the web server's `/api/config` endpoint.
+When an API key is configured:
+- All `/api` REST routes on every service require it via `X-API-Key` header
+- Socket.IO connections require it via `auth.apiKey` or `X-API-Key` header
+- Internal services bind to `127.0.0.1` — only the web server (port 8080) is publicly accessible
+- The web proxy injects auth headers transparently; the dashboard never sees the key
+- Key comparison uses `crypto.timingSafeEqual` to prevent timing attacks
 
 ---
 
@@ -280,7 +291,7 @@ Edit on your desktop, sync to Pi:
 ```
 
 Edit `PI_HOST` in the sync script to set your default Pi address.
-`sync.sh` preserves remote `config/*.json` by default; pass `--with-config` to sync them.
+Config files (`config/*.json`) are gitignored and not synced by default — each node keeps its own local config. Pass `--with-config` to sync them explicitly.
 
 ---
 
@@ -297,16 +308,14 @@ latticespark/
 │   ├── camera-service/           # Standalone Python camera server
 │   │   └── processors/           # ML processors (face, motion)
 │   └── modules/                  # BaseModule, ModuleContext, module loader
-├── modules/
-│   ├── hello-world/              # Example module (template)
-│   ├── segment-clock/            # 7-segment clock module
-│   └── camera-view/              # Camera feed module
+├── modules/                        # Auto-discovered modules (see example-modules repo)
 ├── web/
 │   └── src/
 │       ├── styles/themes/        # Theme token files (SCSS)
 │       └── components/           # LitElement cards + dashboard
 ├── config/
-│   └── components.json           # Component configuration
+│   ├── *.json.example-*          # Config templates (standalone/hub/spoke)
+│   └── *.json                    # Runtime configs (gitignored)
 ├── examples/                     # Standalone example scripts (23 scripts)
 ├── test/                         # Unit tests (no hardware needed)
 ├── rules/                        # Coding rules (for contributors)
@@ -374,10 +383,20 @@ LatticeSpark supports hub/spoke deployments with two new services:
 - Hub can manage spoke modules and trigger module/firmware deployments.
 - Remote writes to spoke components are lease-enforced.
 
-### New configuration
+### Configuration
 
-- `config/cluster.json`
-- `config/arduino-sources.json` (used by sensor-service for Arduino serial ingest)
+All config files are **gitignored** — copy from the `.example-*` templates:
+
+```bash
+# Hub
+cp config/cluster.json.example-hub config/cluster.json
+cp config/components.json.example-hub config/components.json
+
+# Spoke
+cp config/cluster.json.example-spoke config/cluster.json
+cp config/components.json.example-spoke config/components.json
+cp config/arduino-sources.json.example config/arduino-sources.json
+```
 
 ### Config precedence
 

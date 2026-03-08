@@ -99,10 +99,6 @@ export function validateConfig(moduleId, config) {
     const hasInterval = config.triggers.interval != null;
     const hasOnChange = Array.isArray(config.triggers.onChange) && config.triggers.onChange.length > 0;
 
-    if (!hasInterval && !hasOnChange) {
-      errors.push('At least one trigger must be defined (interval or onChange)');
-    }
-
     if (hasInterval && (typeof config.triggers.interval !== 'number' || config.triggers.interval < 100)) {
       errors.push('"triggers.interval" must be a number >= 100 (ms)');
     }
@@ -114,6 +110,10 @@ export function validateConfig(moduleId, config) {
 
   if (config.ui?.page && !config.ui.label) {
     errors.push('"ui.label" is required when "ui.page" is true');
+  }
+
+  if (config.ui?.standalone && !config.ui.label) {
+    errors.push('"ui.label" is required when "ui.standalone" is true');
   }
 
   return errors;
