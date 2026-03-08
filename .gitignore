@@ -68,6 +68,7 @@ data/
 config/cluster.json
 config/components.json
 config/arduino-sources.json
+config/services.json
 
 # Windows NUL artifact
 nul
