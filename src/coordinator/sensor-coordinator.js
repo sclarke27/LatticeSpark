@@ -88,25 +88,31 @@ export class SensorCoordinator extends EventEmitter {
     // Step 1: Load configuration
     const componentConfig = await this.#loadConfiguration();
 
+    const hasComponents = Object.keys(componentConfig).length > 0;
+
     // Step 2: Start hardware manager client (or use injected client for testing)
-    this.#hwClient = this.#config.hwClient || await createHardwareManagerClient();
+    if (hasComponents) {
+      this.#hwClient = this.#config.hwClient || await createHardwareManagerClient();
 
-    // Forward hardware manager events
-    this.#hwClient.on('error', (error) => {
-      this.emit('error', error);
-    });
+      // Forward hardware manager events
+      this.#hwClient.on('error', (error) => {
+        this.emit('error', error);
+      });
 
-    this.#hwClient.on('exit', (info) => {
-      this.emit('hardware-manager-exit', info);
-    });
+      this.#hwClient.on('exit', (info) => {
+        this.emit('hardware-manager-exit', info);
+      });
 
-    // Step 3: Register and initialize components
-    for (const [componentId, componentDef] of Object.entries(componentConfig)) {
-      if (componentDef.enabled === false) {
-        log.info({ componentId }, 'Skipping disabled component');
-        continue;
+      // Step 3: Register and initialize components
+      for (const [componentId, componentDef] of Object.entries(componentConfig)) {
+        if (componentDef.enabled === false) {
+          log.info({ componentId }, 'Skipping disabled component');
+          continue;
+        }
+        await this.#registerComponent(componentId, componentDef);
       }
-      await this.#registerComponent(componentId, componentDef);
+    } else {
+      log.info('No components configured — skipping hardware manager');
     }
 
     this.#isInitialized = true;
