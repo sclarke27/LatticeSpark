@@ -54,6 +54,7 @@ app.use('/socket.io', createProxyMiddleware({
   target: SENSOR_SERVICE_URL,
   changeOrigin: true,
   ws: true,
+  ...proxyAuthHeaders(),
   onError: (err, req, res) => {
     console.error('Socket.io proxy error:', err.message);
     if (res && typeof res.destroy === 'function' && !res.writeHead) {
@@ -121,6 +122,7 @@ const moduleWsProxy = createProxyMiddleware({
   target: MODULE_SERVICE_URL,
   changeOrigin: true,
   ws: true,
+  ...proxyAuthHeaders(),
   onError: (err, req, res) => {
     console.error('Module WebSocket proxy error:', err.message);
     if (res && typeof res.destroy === 'function') res.destroy();
@@ -144,6 +146,7 @@ const wsProxy = createProxyMiddleware({
   target: SENSOR_SERVICE_URL,
   changeOrigin: true,
   ws: true,
+  ...proxyAuthHeaders(),
   onError: (err, req, res) => {
     console.error('WebSocket proxy error:', err.message);
     if (res && typeof res.destroy === 'function') res.destroy();
