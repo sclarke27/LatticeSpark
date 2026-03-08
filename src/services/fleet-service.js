@@ -26,7 +26,7 @@ const API_KEY = clusterConfig.apiKey || '';
 const ADMIN_TOKEN = process.env.LATTICESPARK_ADMIN_TOKEN || API_KEY;
 const SOCKET_TIMEOUT_MS = parseInt(process.env.FLEET_SOCKET_TIMEOUT_MS || '10000', 10);
 
-const service = new BaseService('fleet-service', { port: PORT, expressOptions: { limit: '100mb' } });
+const service = new BaseService('fleet-service', { port: PORT, host: '0.0.0.0', expressOptions: { limit: '100mb' } });
 const { app, httpServer } = service;
 const io = new Server(httpServer, {
   transports: ['websocket'],
