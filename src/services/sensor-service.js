@@ -851,9 +851,11 @@ async function pushToStorage(sensorId, data) {
   const timer = setTimeout(() => controller.abort(), STORAGE_PUSH_TIMEOUT);
 
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (API_KEY) headers['X-API-Key'] = API_KEY;
     const response = await fetch(`${STORAGE_SERVICE_URL}/api/data`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         sensorId,
         data,
