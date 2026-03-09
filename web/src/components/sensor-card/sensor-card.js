@@ -303,6 +303,7 @@ export class SensorCard extends BaseChartCard {
       this.charts.get(canvasId).destroy();
     }
 
+    const range = getRangeById(this.timeRange);
     const tension = getTension(range);
     const datasets = tab.keys.map((_metric, i) => {
       const color = AXIS_COLORS[AXIS_LABELS[i]];
@@ -317,8 +318,6 @@ export class SensorCard extends BaseChartCard {
         tension
       };
     });
-
-    const range = getRangeById(this.timeRange);
 
     const chart = new Chart(canvas, {
       type: 'line',
