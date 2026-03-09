@@ -27,6 +27,7 @@ import {
 import { withTimeout } from '../utils/timeout.js';
 import { requireApiKey as createApiKeyMiddleware } from '../utils/auth.js';
 import { normalizeNodeId } from '../utils/normalization.js';
+import { io as ioClient } from 'socket.io-client';
 import { BaseService } from './base-service.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -843,39 +844,39 @@ io.on('connection', (socket) => {
   });
 });
 
-// Push data to Storage Service (with timeout to prevent accumulation)
-const STORAGE_PUSH_TIMEOUT = parseInt(process.env.STORAGE_PUSH_TIMEOUT || '5000', 10);
+// Push data to Storage Service via Socket.IO
+let storageSocket = null;
 
-async function pushToStorage(sensorId, data) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), STORAGE_PUSH_TIMEOUT);
+function connectToStorageService() {
+  storageSocket = ioClient(STORAGE_SERVICE_URL, {
+    transports: ['websocket'],
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 10000,
+    ...(API_KEY ? { auth: { apiKey: API_KEY } } : {})
+  });
 
-  try {
-    const headers = { 'Content-Type': 'application/json' };
-    if (API_KEY) headers['X-API-Key'] = API_KEY;
-    const response = await fetch(`${STORAGE_SERVICE_URL}/api/data`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        sensorId,
-        data,
-        timestamp: data.timestamp || Date.now() / 1000
-      }),
-      signal: controller.signal
-    });
+  storageSocket.on('connect', () => {
+    log.info('Connected to storage-service via Socket.IO');
+  });
 
-    if (!response.ok) {
-      log.error('Storage push failed: %s', response.statusText);
-    }
-  } catch (error) {
-    if (error.name === 'AbortError') {
-      log.error({ sensorId, timeoutMs: STORAGE_PUSH_TIMEOUT }, 'Storage push timeout');
-    } else {
-      log.error({ err: error }, 'Failed to push to storage');
-    }
-  } finally {
-    clearTimeout(timer);
-  }
+  storageSocket.on('disconnect', (reason) => {
+    log.warn('Disconnected from storage-service: %s', reason);
+  });
+
+  storageSocket.on('connect_error', (err) => {
+    log.error({ err: { message: err.message } }, 'Storage socket connection error');
+  });
+}
+
+function pushToStorage(sensorId, data) {
+  if (!storageSocket?.connected) return;
+  storageSocket.emit('store', {
+    sensorId,
+    data,
+    timestamp: data.timestamp || Date.now() / 1000
+  });
 }
 
 // Build component list including camera as virtual component
@@ -1062,12 +1063,20 @@ function stopAllArduinoReaders() {
 
 service.initialize = async () => {
   log.info('Role: %s', ROLE);
+  connectToStorageService();
   await initializeCoordinator();
   log.info('Ready - WebSocket: ws://localhost:%d', PORT);
-  log.info('Pushing data to Storage Service: %s', STORAGE_SERVICE_URL);
+  log.info('Storage Service (Socket.IO): %s', STORAGE_SERVICE_URL);
 };
 
 service.onShutdown = async () => {
+  // Disconnect from storage-service
+  if (storageSocket) {
+    storageSocket.disconnect();
+    storageSocket = null;
+    log.info('Storage socket disconnected');
+  }
+
   // Stop polling (no new reads will start)
   stopPolling();
   stopAllArduinoReaders();

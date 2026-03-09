@@ -99,6 +99,10 @@ export function validateConfig(moduleId, config) {
     const hasInterval = config.triggers.interval != null;
     const hasOnChange = Array.isArray(config.triggers.onChange) && config.triggers.onChange.length > 0;
 
+    if (!hasInterval && !hasOnChange) {
+      errors.push('At least one trigger is required ("triggers.interval" or "triggers.onChange")');
+    }
+
     if (hasInterval && (typeof config.triggers.interval !== 'number' || config.triggers.interval < 100)) {
       errors.push('"triggers.interval" must be a number >= 100 (ms)');
     }

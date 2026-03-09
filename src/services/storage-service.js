@@ -3,17 +3,19 @@
  * Storage Service
  *
  * Historical sensor data storage and query service.
- * - SQLite database for sensor readings (using sql.js - pure JavaScript)
+ * - SQLite database for sensor readings (using better-sqlite3 - native C++ addon)
+ * - WAL mode for concurrent reads/writes without blocking
+ * - Socket.IO server for real-time data ingestion from sensor-service
  * - REST API for historical queries
  * - Configurable retention policy
  * - Automatic cleanup of old data
  */
 
-import initSqlJs from 'sql.js';
+import Database from 'better-sqlite3';
+import { Server } from 'socket.io';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { mkdirSync, existsSync, readFileSync, writeFileSync, renameSync } from 'fs';
-import { writeFile, rename } from 'fs/promises';
+import { mkdirSync, existsSync } from 'fs';
 import { BaseService } from './base-service.js';
 import { requireApiKey as createApiKeyMiddleware } from '../utils/auth.js';
 import { loadClusterConfig } from '../cluster/cluster-config.js';
@@ -27,21 +29,14 @@ const PORT = process.env.STORAGE_SERVICE_PORT || 3001;
 const DB_PATH = process.env.DB_PATH || join(__dirname, '..', '..', 'data', 'sensors.db');
 const RETENTION_HOURS = parseInt(process.env.RETENTION_HOURS || '168', 10);
 
-let SQL = null;
 let db = null;
-let recoveryInProgress = false;
+let insertStmt = null;
+let insertMany = null;
 
-function isCorruptionError(error) {
-  const msg = String(error?.message || '').toLowerCase();
-  return (
-    msg.includes('database disk image is malformed') ||
-    msg.includes('file is not a database') ||
-    msg.includes('database schema is malformed')
-  );
-}
+// ── Database ────────────────────────────────────────────────────────────────
 
-function initializeSchema(database) {
-  database.run(`
+function initializeSchema() {
+  db.exec(`
     CREATE TABLE IF NOT EXISTS sensor_readings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sensor_id TEXT NOT NULL,
@@ -53,117 +48,68 @@ function initializeSchema(database) {
     )
   `);
 
-  database.run(`
+  db.exec(`
     CREATE INDEX IF NOT EXISTS idx_sensor_timestamp
       ON sensor_readings(sensor_id, timestamp DESC)
   `);
 
-  database.run(`
+  db.exec(`
     CREATE INDEX IF NOT EXISTS idx_metric_timestamp
       ON sensor_readings(sensor_id, metric, timestamp DESC)
   `);
+
+  // Timestamp-only index for cleanup DELETE performance
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_timestamp
+      ON sensor_readings(timestamp)
+  `);
 }
 
-function buildCorruptBackupPath() {
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  return `${DB_PATH}.corrupt-${stamp}.bak`;
-}
-
-function recoverDatabase(reason, error) {
-  if (recoveryInProgress) return;
-  recoveryInProgress = true;
-  try {
-    log.error({ err: error, reason }, 'Recovering database');
-
-    try {
-      if (db) db.close();
-    } catch {}
-
-    if (existsSync(DB_PATH)) {
-      try {
-        const backupPath = buildCorruptBackupPath();
-        renameSync(DB_PATH, backupPath);
-        log.error('Corrupt DB backed up: %s', backupPath);
-      } catch (backupErr) {
-        log.error({ err: backupErr }, 'Failed to backup corrupt DB');
-      }
-    }
-
-    db = new SQL.Database();
-    initializeSchema(db);
-    saveDatabaseToFileSync();
-    log.info('Recovery complete with fresh database');
-  } finally {
-    recoveryInProgress = false;
-  }
-}
-
-// Initialize database
-async function initializeDatabase() {
-  // Ensure data directory exists
+function initializeDatabase() {
   const dataDir = dirname(DB_PATH);
   if (!existsSync(dataDir)) {
     mkdirSync(dataDir, { recursive: true });
   }
 
-  log.info('Loading SQLite...');
-  SQL = await initSqlJs();
+  log.info('Opening database: %s', DB_PATH);
+  db = new Database(DB_PATH);
 
-  log.info('Initializing database: %s', DB_PATH);
+  // WAL mode: readers don't block writers, writers don't block readers
+  db.pragma('journal_mode = WAL');
 
-  // Load existing database or create new one
-  if (existsSync(DB_PATH)) {
-    try {
-      const buffer = readFileSync(DB_PATH);
-      db = new SQL.Database(buffer);
-      initializeSchema(db);
-      log.info('Existing database loaded');
-    } catch (err) {
-      if (!isCorruptionError(err)) throw err;
-      recoverDatabase('startup-load', err);
+  // Performance tuning
+  db.pragma('synchronous = NORMAL');  // safe with WAL
+  db.pragma('cache_size = -8000');    // 8MB cache
+  db.pragma('busy_timeout = 5000');
+
+  // Migrate to incremental auto-vacuum if not already set
+  const autoVacuum = db.pragma('auto_vacuum', { simple: true });
+  if (autoVacuum === 0) {
+    log.info('Migrating database to incremental auto-vacuum...');
+    db.pragma('auto_vacuum = INCREMENTAL');
+    db.exec('VACUUM');
+    log.info('Auto-vacuum migration complete');
+  }
+
+  initializeSchema();
+
+  // Prepare cached statements
+  insertStmt = db.prepare(`
+    INSERT INTO sensor_readings (sensor_id, metric, value, unit, timestamp)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  insertMany = db.transaction((readings) => {
+    for (const r of readings) {
+      insertStmt.run(r.sensorId, r.metric, r.value, r.unit, r.timestamp);
     }
-  } else {
-    db = new SQL.Database();
-    initializeSchema(db);
-    log.info('New database created');
-  }
+  });
 
-  log.info('Database schema ready');
-}
-
-// Save database to file (async to avoid blocking event loop)
-let saveInProgress = false;
-
-async function saveDatabaseToFile() {
-  if (!db || recoveryInProgress) return;
-  if (saveInProgress) return; // skip if previous save still running
-  saveInProgress = true;
-  try {
-    const data = db.export();
-    const buffer = Buffer.from(data);
-    const tmpPath = `${DB_PATH}.tmp`;
-    await writeFile(tmpPath, buffer);
-    await rename(tmpPath, DB_PATH);
-  } catch (err) {
-    log.error({ err }, 'Failed to save database');
-  } finally {
-    saveInProgress = false;
-  }
-}
-
-// Synchronous save for shutdown (must complete before exit)
-function saveDatabaseToFileSync() {
-  if (!db) return;
-  const data = db.export();
-  const buffer = Buffer.from(data);
-  const tmpPath = `${DB_PATH}.tmp`;
-  writeFileSync(tmpPath, buffer);
-  renameSync(tmpPath, DB_PATH);
+  log.info('Database ready (WAL mode)');
 }
 
 // Store sensor reading
 function storeSensorReading(sensorId, data, timestamp) {
-  // Convert sensor data to flat readings
   const readings = [];
 
   for (const [key, value] of Object.entries(data)) {
@@ -179,38 +125,11 @@ function storeSensorReading(sensorId, data, timestamp) {
     else if (key === 'humidity') unit = '%';
     else if (key === 'distance') unit = 'cm';
 
-    readings.push({
-      sensorId,
-      metric: key,
-      value: numValue,
-      unit,
-      timestamp
-    });
+    readings.push({ sensorId, metric: key, value: numValue, unit, timestamp });
   }
 
-  // Insert all readings in a transaction
-  db.run('BEGIN TRANSACTION');
-  try {
-    const stmt = db.prepare(`
-      INSERT INTO sensor_readings (sensor_id, metric, value, unit, timestamp)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-
-    for (const reading of readings) {
-      stmt.run([
-        reading.sensorId,
-        reading.metric,
-        reading.value,
-        reading.unit,
-        reading.timestamp
-      ]);
-    }
-
-    stmt.free();
-    db.run('COMMIT');
-  } catch (error) {
-    db.run('ROLLBACK');
-    throw error;
+  if (readings.length > 0) {
+    insertMany(readings);
   }
 }
 
@@ -221,58 +140,40 @@ function queryHistory(sensorId, metric, start, end, limit = 1000) {
     FROM sensor_readings
     WHERE sensor_id = ?
   `;
-
   const params = [sensorId];
 
   if (metric) {
-    query += ` AND metric = ?`;
+    query += ' AND metric = ?';
     params.push(metric);
   }
 
   if (start) {
-    query += ` AND timestamp >= ?`;
+    query += ' AND timestamp >= ?';
     params.push(start);
   }
 
   if (end) {
-    query += ` AND timestamp <= ?`;
+    query += ' AND timestamp <= ?';
     params.push(end);
   }
 
-  query += ` ORDER BY timestamp DESC LIMIT ?`;
+  query += ' ORDER BY timestamp DESC LIMIT ?';
   params.push(limit);
 
-  const stmt = db.prepare(query);
-  try {
-    stmt.bind(params);
-
-    const results = [];
-    while (stmt.step()) {
-      const row = stmt.getAsObject();
-      results.push(row);
-    }
-    return results;
-  } finally {
-    stmt.free();
-  }
+  return db.prepare(query).all(...params);
 }
 
 // Delete old data
 function cleanupOldData() {
   const cutoffTimestamp = Date.now() / 1000 - (RETENTION_HOURS * 3600);
 
-  const stmt = db.prepare(`
-    DELETE FROM sensor_readings
-    WHERE timestamp < ?
-  `);
-  stmt.run([cutoffTimestamp]);
-  stmt.free();
+  const result = db.prepare('DELETE FROM sensor_readings WHERE timestamp < ?')
+    .run(cutoffTimestamp);
 
-  const changes = db.getRowsModified();
-  if (changes > 0) {
-    log.info('Cleaned up %d old readings (older than %dh)', changes, RETENTION_HOURS);
-    // Reclaim disk space after deleting rows (SQLite DELETE doesn't free pages)
-    db.run('VACUUM');
+  if (result.changes > 0) {
+    log.info('Cleaned up %d old readings (older than %dh)', result.changes, RETENTION_HOURS);
+    // Reclaim space incrementally (free up to 1000 pages, non-blocking)
+    db.pragma('incremental_vacuum(1000)');
   }
 }
 
@@ -291,19 +192,62 @@ app.use('/api', createApiKeyMiddleware(API_KEY));
 const periodicTimers = [];
 
 function startPeriodicTasks() {
-  periodicTimers.push(setInterval(() => saveDatabaseToFile(), 10000));
+  // Cleanup old data hourly
   periodicTimers.push(setInterval(() => {
     log.info('Running cleanup task...');
     cleanupOldData();
-    saveDatabaseToFile();
   }, 3600000));
+
+  // Run cleanup once shortly after startup
   periodicTimers.push(setTimeout(() => {
     cleanupOldData();
-    saveDatabaseToFile();
   }, 5000));
 }
 
-// REST API: Store sensor data
+// ── Socket.IO Server (sensor data ingestion) ────────────────────────────────
+
+let storageIo = null;
+
+function setupSocketServer() {
+  storageIo = new Server(service.httpServer, {
+    transports: ['websocket'],
+    cors: { origin: '*', methods: ['GET', 'POST'] }
+  });
+
+  // Auth middleware — same pattern as fleet-service
+  if (API_KEY) {
+    storageIo.use((socket, next) => {
+      const key = socket.handshake.auth?.apiKey
+        || socket.handshake.headers?.['x-api-key']
+        || '';
+      if (key === API_KEY) return next();
+      log.warn('Rejected storage socket auth from %s', socket.handshake.address || 'unknown');
+      next(new Error('unauthorized'));
+    });
+  }
+
+  storageIo.on('connection', (socket) => {
+    log.info({ socketId: socket.id }, 'Sensor service connected for storage writes');
+
+    socket.on('store', ({ sensorId, data, timestamp }) => {
+      try {
+        if (!sensorId || !data) return;
+        const ts = timestamp || Date.now() / 1000;
+        storeSensorReading(sensorId, data, ts);
+      } catch (error) {
+        log.error({ err: error, sensorId }, 'Socket store error');
+      }
+    });
+
+    socket.on('disconnect', () => {
+      log.info({ socketId: socket.id }, 'Sensor service disconnected');
+    });
+  });
+}
+
+// ── REST API ────────────────────────────────────────────────────────────────
+
+// Store sensor data (backward-compatible HTTP endpoint)
 app.post('/api/data', (req, res) => {
   try {
     const { sensorId, data, timestamp } = req.body;
@@ -317,24 +261,12 @@ app.post('/api/data', (req, res) => {
 
     res.json({ status: 'ok', stored: true });
   } catch (error) {
-    if (isCorruptionError(error)) {
-      try {
-        recoverDatabase('write-path', error);
-        const { sensorId, data, timestamp } = req.body;
-        const ts = timestamp || Date.now() / 1000;
-        storeSensorReading(sensorId, data, ts);
-        return res.json({ status: 'ok', stored: true, recovered: true });
-      } catch (recoveryErr) {
-        log.error({ err: recoveryErr }, 'Error recovering storage database');
-        return res.status(500).json({ error: 'Storage write failed' });
-      }
-    }
     log.error({ err: error }, 'Error storing data');
     res.status(500).json({ error: 'Storage write failed' });
   }
 });
 
-// REST API: Query historical data
+// Query historical data
 app.get('/api/history/:sensorId', (req, res) => {
   try {
     const { sensorId } = req.params;
@@ -359,107 +291,65 @@ app.get('/api/history/:sensorId', (req, res) => {
   }
 });
 
-// REST API: Get available sensors
+// Get available sensors
 app.get('/api/sensors', (req, res) => {
   try {
-    const stmt = db.prepare(`
-      SELECT DISTINCT sensor_id
-      FROM sensor_readings
-      ORDER BY sensor_id
-    `);
-
-    try {
-      const sensors = [];
-      while (stmt.step()) {
-        const row = stmt.getAsObject();
-        sensors.push(row.sensor_id);
-      }
-      res.json({ sensors });
-    } finally {
-      stmt.free();
-    }
+    const rows = db.prepare(
+      'SELECT DISTINCT sensor_id FROM sensor_readings ORDER BY sensor_id'
+    ).all();
+    res.json({ sensors: rows.map(r => r.sensor_id) });
   } catch (error) {
     log.error({ err: error }, 'Error getting sensors');
     res.status(500).json({ error: 'Query failed' });
   }
 });
 
-// REST API: Get metrics for a sensor
+// Get metrics for a sensor
 app.get('/api/sensors/:sensorId/metrics', (req, res) => {
   try {
-    const { sensorId } = req.params;
-
-    const stmt = db.prepare(`
-      SELECT DISTINCT metric, unit
-      FROM sensor_readings
-      WHERE sensor_id = ?
-      ORDER BY metric
-    `);
-    try {
-      stmt.bind([sensorId]);
-
-      const metrics = [];
-      while (stmt.step()) {
-        metrics.push(stmt.getAsObject());
-      }
-      res.json({
-        sensorId,
-        metrics
-      });
-    } finally {
-      stmt.free();
-    }
+    const metrics = db.prepare(
+      'SELECT DISTINCT metric, unit FROM sensor_readings WHERE sensor_id = ? ORDER BY metric'
+    ).all(req.params.sensorId);
+    res.json({ sensorId: req.params.sensorId, metrics });
   } catch (error) {
     log.error({ err: error }, 'Error getting metrics');
     res.status(500).json({ error: 'Query failed' });
   }
 });
 
-// Health check
+// Health check — lightweight index-only query
 service.registerHealthCheck(async () => {
-  const stmt = db.prepare(`
-    SELECT
-      COUNT(*) as total_readings,
-      COUNT(DISTINCT sensor_id) as total_sensors,
-      MIN(timestamp) as oldest_reading,
-      MAX(timestamp) as newest_reading
-    FROM sensor_readings
-  `);
-  let stats;
-  try {
-    stmt.step();
-    stats = stmt.getAsObject();
-  } finally {
-    stmt.free();
-  }
+  const row = db.prepare(
+    'SELECT MAX(timestamp) as newest_reading FROM sensor_readings'
+  ).get();
 
   return {
     status: 'ok',
     database: 'connected',
     retention_hours: RETENTION_HOURS,
     stats: {
-      ...stats,
-      oldest_reading: stats.oldest_reading ? new Date(stats.oldest_reading * 1000).toISOString() : null,
-      newest_reading: stats.newest_reading ? new Date(stats.newest_reading * 1000).toISOString() : null
+      newest_reading: row?.newest_reading
+        ? new Date(row.newest_reading * 1000).toISOString()
+        : null
     },
     uptime: process.uptime()
   };
 });
 
-// Override initialize to set up database
+// Override initialize to set up database and Socket.IO
 const originalInitialize = service.initialize.bind(service);
 service.initialize = async () => {
   await originalInitialize();
   try {
-    await initializeDatabase();
+    initializeDatabase();
+    setupSocketServer();
     startPeriodicTasks();
   } catch (err) {
     log.error({ err }, 'Failed to initialize database');
     process.exit(1);
   }
   log.info('Ready - Retention: %d hours', RETENTION_HOURS);
-  log.info('Database: %s', DB_PATH);
-  log.info('Auto-save every 10 seconds');
+  log.info('Database: %s (WAL mode)', DB_PATH);
 };
 
 // Override onShutdown for database cleanup
@@ -467,9 +357,11 @@ service.onShutdown = async () => {
   periodicTimers.forEach(id => clearTimeout(id));
   periodicTimers.length = 0;
 
+  if (storageIo) {
+    storageIo.close();
+  }
+
   if (db) {
-    log.info('Saving database...');
-    saveDatabaseToFileSync();
     log.info('Closing database...');
     db.close();
   }
