@@ -8,7 +8,8 @@ import {
   TimeScale,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  Decimation
 } from 'chart.js';
 import 'chartjs-adapter-date-fns';
 
@@ -21,7 +22,8 @@ Chart.register(
   TimeScale,
   Title,
   Tooltip,
-  Legend
+  Legend,
+  Decimation
 );
 
 export { Chart };
@@ -35,10 +37,32 @@ export class BaseChartCard extends BaseCard {
     this._lastChartUpdate = 0;
     this._chartUpdatePending = false;
     this._chartUpdateTimeout = null;
+    this._isVisible = false;
+    this._needsCatchUp = false;
+    this._visibilityObserver = null;
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this._visibilityObserver = new IntersectionObserver(
+      ([entry]) => {
+        this._isVisible = entry.isIntersecting;
+        if (this._isVisible && this._needsCatchUp) {
+          this._needsCatchUp = false;
+          this.addLiveDataPoint();
+        }
+      },
+      { rootMargin: '100px' }
+    );
+    this._visibilityObserver.observe(this);
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    if (this._visibilityObserver) {
+      this._visibilityObserver.disconnect();
+      this._visibilityObserver = null;
+    }
     if (this._chartUpdateTimeout) {
       clearTimeout(this._chartUpdateTimeout);
       this._chartUpdateTimeout = null;
@@ -60,6 +84,11 @@ export class BaseChartCard extends BaseCard {
   }
 
   _scheduleChartUpdate() {
+    if (!this._isVisible) {
+      this._needsCatchUp = true;
+      return;
+    }
+
     const now = Date.now();
     const elapsed = now - this._lastChartUpdate;
 

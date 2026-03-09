@@ -17,11 +17,24 @@ function getCanvasId(componentId, key) {
   return `chart-${componentId}-${key}`;
 }
 
+// Ranges <= 5 minutes use bezier curves; longer ranges disable tension for decimation
+const DECIMATION_THRESHOLD = 300; // seconds
+
+function useDecimation(range) {
+  return range && range.seconds > DECIMATION_THRESHOLD;
+}
+
+function getTension(range) {
+  return useDecimation(range) ? 0 : 0.4;
+}
+
 function buildChartOptions({ precision, unit, showLegend = false, range }) {
+  const decimate = useDecimation(range);
   return {
     responsive: true,
     maintainAspectRatio: false,
     animation: false,
+    parsing: false,
     interaction: { mode: 'index', intersect: false },
     plugins: {
       legend: showLegend
@@ -47,7 +60,10 @@ function buildChartOptions({ precision, unit, showLegend = false, range }) {
             return `${prefix}${context.parsed.y.toFixed(precision)} ${unit}`;
           }
         }
-      }
+      },
+      decimation: decimate
+        ? { enabled: true, algorithm: 'lttb', samples: 500 }
+        : { enabled: false }
     },
     scales: {
       x: {
@@ -169,7 +185,7 @@ export class SensorCard extends BaseChartCard {
 
     if (tab.type === 'label_map') return;
 
-    const now = new Date(this.data.timestamp * 1000);
+    const now = this.data.timestamp * 1000;
 
     if (tab.type === 'axis') {
       this._addPointToChart(tab.chartKey, tab.keys, now);
@@ -190,10 +206,12 @@ export class SensorCard extends BaseChartCard {
     const data = chart.data.datasets[0].data;
     data.push({ x: now, y: value });
 
-    const cutoff = now.getTime() - range.seconds * 1000;
-    while (data.length > 0 && data[0].x.getTime() < cutoff) {
-      data.shift();
+    const cutoff = now - range.seconds * 1000;
+    let trimIndex = 0;
+    while (trimIndex < data.length && data[trimIndex].x < cutoff) {
+      trimIndex++;
     }
+    if (trimIndex > 0) data.splice(0, trimIndex);
     if (data.length > range.fetchLimit) {
       data.splice(0, data.length - range.fetchLimit);
     }
@@ -207,7 +225,7 @@ export class SensorCard extends BaseChartCard {
     if (!chart) return;
 
     const range = getRangeById(this.timeRange);
-    const cutoff = now.getTime() - range.seconds * 1000;
+    const cutoff = now - range.seconds * 1000;
 
     metrics.forEach((metric, i) => {
       const value = this.data[metric];
@@ -216,9 +234,11 @@ export class SensorCard extends BaseChartCard {
       const data = chart.data.datasets[i].data;
       data.push({ x: now, y: value });
 
-      while (data.length > 0 && data[0].x.getTime() < cutoff) {
-        data.shift();
+      let trimIndex = 0;
+      while (trimIndex < data.length && data[trimIndex].x < cutoff) {
+        trimIndex++;
       }
+      if (trimIndex > 0) data.splice(0, trimIndex);
       if (data.length > range.fetchLimit) {
         data.splice(0, data.length - range.fetchLimit);
       }
@@ -262,9 +282,9 @@ export class SensorCard extends BaseChartCard {
           borderColor: color,
           backgroundColor: colorWithAlpha(color),
           borderWidth: 2,
-          pointRadius: 1,
+          pointRadius: 0,
           pointHoverRadius: 4,
-          tension: 0.4
+          tension: getTension(range)
         }]
       },
       options: buildChartOptions({ precision: tab.precision, unit: tab.unit, range })
@@ -283,6 +303,7 @@ export class SensorCard extends BaseChartCard {
       this.charts.get(canvasId).destroy();
     }
 
+    const tension = getTension(range);
     const datasets = tab.keys.map((_metric, i) => {
       const color = AXIS_COLORS[AXIS_LABELS[i]];
       return {
@@ -293,7 +314,7 @@ export class SensorCard extends BaseChartCard {
         borderWidth: 1.5,
         pointRadius: 0,
         pointHoverRadius: 3,
-        tension: 0.3
+        tension
       };
     });
 
@@ -336,7 +357,7 @@ export class SensorCard extends BaseChartCard {
       metrics.forEach((metric, i) => {
         const raw = results[i]
           .reverse()
-          .map(d => ({ x: new Date(d.timestamp * 1000), y: d.value }));
+          .map(d => ({ x: d.timestamp * 1000, y: d.value }));
 
         const points = downsample(raw, MAX_DISPLAY_POINTS);
 
