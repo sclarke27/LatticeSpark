@@ -588,8 +588,13 @@ function connectToHub() {
     });
   });
 
-  fleetSocket.on('disconnect', () => {
-    log.warn('Disconnected from hub');
+  fleetSocket.on('disconnect', (reason) => {
+    log.warn('Disconnected from hub: %s', reason);
+    if (reason === 'io server disconnect') {
+      // Server-initiated disconnect (e.g. hub restart) — Socket.IO won't
+      // auto-reconnect, so we must reconnect manually.
+      fleetSocket.connect();
+    }
   });
 
   fleetSocket.on('connect_error', (err) => {
