@@ -151,7 +151,7 @@ describe('module-loader', () => {
 
     // ── Trigger validation ──
 
-    it('should error when no triggers are defined (no interval, no onChange)', () => {
+    it('should accept empty triggers (command-driven modules)', () => {
       // Arrange
       const config = validConfig({ triggers: {} });
 
@@ -159,7 +159,7 @@ describe('module-loader', () => {
       const errors = validateConfig('my-module', config);
 
       // Assert
-      assert.ok(errors.some(e => e.includes('At least one trigger')));
+      assert.deepStrictEqual(errors, []);
     });
 
     it('should error when triggers.interval is too small (<100)', () => {
