@@ -15,20 +15,24 @@ export class ReplayQueue {
   #statePath;
   #retentionMs;
   #maxBytes;
+  #maxItems;
   #items;
   #nextSeq;
   #ackedSeq;
   #ioChain;
+  #dirty;
 
-  constructor({ queuePath, retentionHours = 72, maxDiskMb = 1024 }) {
+  constructor({ queuePath, retentionHours = 72, maxDiskMb = 1024, maxItems = 10000 }) {
     this.#queuePath = queuePath;
     this.#statePath = `${queuePath}.state.json`;
     this.#retentionMs = Math.max(1, retentionHours) * 3600 * 1000;
-    this.#maxBytes = Math.max(1, maxDiskMb) * 1024 * 1024;
+    this.#maxBytes = Math.max(0.001, maxDiskMb) * 1024 * 1024;
+    this.#maxItems = Math.max(100, maxItems);
     this.#items = [];
     this.#nextSeq = 1;
     this.#ackedSeq = 0;
     this.#ioChain = Promise.resolve();
+    this.#dirty = false;
   }
 
   async initialize() {
@@ -66,6 +70,11 @@ export class ReplayQueue {
       this.#nextSeq = Math.max(this.#nextSeq, row.seq + 1);
     }
     this.#items.sort((a, b) => a.seq - b.seq);
+
+    // Enforce memory cap on load
+    if (this.#items.length > this.#maxItems) {
+      this.#items = this.#items.slice(-this.#maxItems);
+    }
   }
 
   enqueue(batch) {
@@ -75,16 +84,38 @@ export class ReplayQueue {
       batch
     };
     this.#items.push(item);
+    this.#dirty = true;
+
+    // Enforce in-memory cap — drop oldest
+    if (this.#items.length > this.#maxItems) {
+      const overflow = this.#items.length - this.#maxItems;
+      this.#items.splice(0, overflow);
+    }
+
     return item;
   }
 
   pending() {
-    return this.#items.filter(item => item.seq > this.#ackedSeq);
+    return [...this.#items];
+  }
+
+  pendingCount() {
+    return this.#items.length;
   }
 
   ack(seq) {
-    if (!Number.isFinite(seq)) return;
-    this.#ackedSeq = Math.max(this.#ackedSeq, seq);
+    if (!Number.isFinite(seq) || seq <= this.#ackedSeq) return;
+    this.#ackedSeq = seq;
+
+    // Eager prune — #items is sorted by seq, ack is monotonic
+    let pruneCount = 0;
+    while (pruneCount < this.#items.length && this.#items[pruneCount].seq <= seq) {
+      pruneCount++;
+    }
+    if (pruneCount > 0) {
+      this.#items.splice(0, pruneCount);
+      this.#dirty = true;
+    }
   }
 
   getAckedSeq() {
@@ -107,8 +138,14 @@ export class ReplayQueue {
   async compact() {
     return this.#runIoLocked(async () => {
       const now = Date.now();
-      this.#items = this.#items.filter(item => item.seq > this.#ackedSeq && now - item.ts <= this.#retentionMs);
+      const before = this.#items.length;
+      this.#items = this.#items.filter(item => now - item.ts <= this.#retentionMs);
+      if (this.#items.length !== before) {
+        this.#dirty = true;
+      }
+      if (!this.#dirty) return;
       await this.#flushUnlocked();
+      this.#dirty = false;
     });
   }
 
@@ -146,14 +183,15 @@ export class ReplayQueue {
     } catch {
       return;
     }
-    if (currentSize <= this.#maxBytes) return;
+    if (currentSize <= this.#maxBytes || this.#items.length === 0) return;
 
-    // Drop oldest pending items until the queue file fits.
-    while (this.#items.length > 0 && currentSize > this.#maxBytes) {
-      this.#items.shift();
+    // Estimate target item count to fit under cap, then drop in bulk
+    const avgItemSize = currentSize / this.#items.length;
+    const targetItems = Math.max(1, Math.floor(this.#maxBytes / avgItemSize));
+    if (targetItems < this.#items.length) {
+      this.#items = this.#items.slice(-targetItems);
       const body = `${this.#items.map(item => JSON.stringify(item)).join('\n')}\n`;
       await writeFile(this.#queuePath, body);
-      currentSize = (await stat(this.#queuePath)).size;
     }
   }
 }

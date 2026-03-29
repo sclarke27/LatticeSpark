@@ -115,17 +115,22 @@ async function enqueueBatch(batch) {
   }
 }
 
+const FLUSH_BATCH_LIMIT = 500;
+
 async function flushQueue() {
   if (!fleetSocket?.connected || flushInProgress) return;
   flushInProgress = true;
   try {
     const pending = queue.pending();
-    for (const item of pending) {
+    const limit = Math.min(pending.length, FLUSH_BATCH_LIMIT);
+    for (let i = 0; i < limit; i++) {
+      if (!fleetSocket?.connected) break;
+      const item = pending[i];
       const ack = await new Promise((resolve, reject) => {
         fleetSocket.timeout(10000).emit('spoke:batch', {
           seq: item.seq,
           batch: item.batch,
-          queueDepth: queue.pending().length
+          queueDepth: queue.pendingCount()
         }, (err, response) => {
           if (err) {
             reject(new Error('Hub timeout waiting for batch ACK'));
@@ -661,7 +666,7 @@ function startHeartbeat() {
     if (!fleetSocket?.connected) return;
     fleetSocket.emit('spoke:heartbeat', {
       ackSeq: queue.getAckedSeq(),
-      queueDepth: queue.pending().length
+      queueDepth: queue.pendingCount()
     });
   }, HEARTBEAT_MS);
 }
