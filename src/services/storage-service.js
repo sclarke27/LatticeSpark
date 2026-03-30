@@ -133,34 +133,48 @@ function storeSensorReading(sensorId, data, timestamp) {
   }
 }
 
-// Query historical data
+// Query historical data — downsamples evenly when rows exceed limit
 function queryHistory(sensorId, metric, start, end, limit = 1000) {
-  let query = `
-    SELECT metric, value, unit, timestamp
-    FROM sensor_readings
-    WHERE sensor_id = ?
-  `;
+  let whereClause = 'WHERE sensor_id = ?';
   const params = [sensorId];
 
   if (metric) {
-    query += ' AND metric = ?';
+    whereClause += ' AND metric = ?';
     params.push(metric);
   }
 
   if (start) {
-    query += ' AND timestamp >= ?';
+    whereClause += ' AND timestamp >= ?';
     params.push(start);
   }
 
   if (end) {
-    query += ' AND timestamp <= ?';
+    whereClause += ' AND timestamp <= ?';
     params.push(end);
   }
 
-  query += ' ORDER BY timestamp DESC LIMIT ?';
-  params.push(limit);
+  // Check if downsampling is needed
+  const { cnt } = db.prepare(
+    `SELECT COUNT(id) AS cnt FROM sensor_readings ${whereClause}`
+  ).get(...params);
 
-  return db.prepare(query).all(...params);
+  if (cnt <= limit) {
+    return db.prepare(
+      `SELECT metric, value, unit, timestamp FROM sensor_readings ${whereClause} ORDER BY timestamp DESC`
+    ).all(...params);
+  }
+
+  // Sample every Nth row to fit within limit while spanning the full time range
+  const step = Math.max(1, Math.floor(cnt / limit));
+  return db.prepare(`
+    SELECT metric, value, unit, timestamp FROM (
+      SELECT metric, value, unit, timestamp,
+             ROW_NUMBER() OVER (ORDER BY timestamp) AS rn
+      FROM sensor_readings ${whereClause}
+    ) WHERE rn % ? = 1
+    ORDER BY timestamp DESC
+    LIMIT ?
+  `).all(...params, step, limit);
 }
 
 // Delete old data
