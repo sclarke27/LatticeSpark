@@ -95,8 +95,11 @@ export class ReplayQueue {
     return item;
   }
 
-  pending() {
-    return [...this.#items];
+  pending(limit) {
+    if (Number.isFinite(limit) && limit >= 0) {
+      return this.#items.slice(0, limit);
+    }
+    return this.#items.slice();
   }
 
   pendingCount() {
