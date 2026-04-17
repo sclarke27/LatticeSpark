@@ -179,17 +179,39 @@ function queryHistory(sensorId, metric, start, end, limit = 1000) {
   `).all(...params, step, limit);
 }
 
-// Delete old data
+let lastCleanup = { at: null, status: 'pending', rowsDeleted: 0, error: null };
+
+// Delete old data. Runs inside a setInterval — an uncaught throw here would
+// kill the service, so errors must be caught and surfaced via the health
+// check so retention failures are visible before the DB fills the disk.
 function cleanupOldData() {
   const cutoffTimestamp = Date.now() / 1000 - (RETENTION_HOURS * 3600);
+  const startedAt = Date.now();
+  try {
+    const result = db.prepare('DELETE FROM sensor_readings WHERE timestamp < ?')
+      .run(cutoffTimestamp);
 
-  const result = db.prepare('DELETE FROM sensor_readings WHERE timestamp < ?')
-    .run(cutoffTimestamp);
-
-  if (result.changes > 0) {
-    log.info('Cleaned up %d old readings (older than %dh)', result.changes, RETENTION_HOURS);
-    // Reclaim space incrementally (free up to 1000 pages, non-blocking)
-    db.pragma('incremental_vacuum(1000)');
+    if (result.changes > 0) {
+      log.info('Cleaned up %d old readings (older than %dh)', result.changes, RETENTION_HOURS);
+      // Reclaim space incrementally (free up to 1000 pages, non-blocking)
+      db.pragma('incremental_vacuum(1000)');
+    }
+    lastCleanup = {
+      at: startedAt,
+      status: 'ok',
+      rowsDeleted: result.changes,
+      durationMs: Date.now() - startedAt,
+      error: null
+    };
+  } catch (err) {
+    lastCleanup = {
+      at: startedAt,
+      status: 'error',
+      rowsDeleted: 0,
+      durationMs: Date.now() - startedAt,
+      error: err.message
+    };
+    log.error({ err }, 'Retention cleanup failed — DB will grow until resolved');
   }
 }
 
@@ -343,14 +365,20 @@ service.registerHealthCheck(async () => {
     'SELECT MAX(timestamp) as newest_reading FROM sensor_readings'
   ).get();
 
+  const cleanupHealthy = lastCleanup.status !== 'error';
+
   return {
-    status: 'ok',
+    status: cleanupHealthy ? 'ok' : 'degraded',
     database: 'connected',
     retention_hours: RETENTION_HOURS,
     stats: {
       newest_reading: row?.newest_reading
         ? new Date(row.newest_reading * 1000).toISOString()
         : null
+    },
+    cleanup: {
+      ...lastCleanup,
+      at: lastCleanup.at ? new Date(lastCleanup.at).toISOString() : null
     },
     uptime: process.uptime()
   };
@@ -379,7 +407,9 @@ service.initialize = async () => {
       return {
         ingestsSinceLast: batch,
         dbSizeMb,
-        storageClients: storageIo?.sockets?.sockets?.size ?? 0
+        storageClients: storageIo?.sockets?.sockets?.size ?? 0,
+        lastCleanupStatus: lastCleanup.status,
+        lastCleanupRows: lastCleanup.rowsDeleted
       };
     }
   });
