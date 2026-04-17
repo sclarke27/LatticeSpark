@@ -10,11 +10,13 @@
  *   pm2 logs
  *   pm2 monit
  *
- * Log rotation:
- *   pm2 install pm2-logrotate
- *   pm2 set pm2-logrotate:max_size 10M
- *   pm2 set pm2-logrotate:retain 7
- *   pm2 set pm2-logrotate:compress true
+ * Log rotation (run ONCE per machine, before first `pnpm run services`):
+ *   pnpm run services:setup-logs
+ *   (installs pm2-logrotate with 10MB max size, 7-file retention, gzip, daily rotate)
+ *
+ * Each app below sets max_memory_restart as a belt-and-suspenders against
+ * slow leaks: PM2 restarts the process before it exhausts host memory and
+ * freezes SSH (the observed failure mode on ~weekly-uptime nodes).
  *
  * Prerequisites:
  *   pnpm install          (pm2 is a project dependency)
@@ -77,6 +79,7 @@ const apps = [
     min_uptime: '5s',
     restart_delay: 2000,
     exp_backoff_restart_delay: 1000,
+    max_memory_restart: process.env.SENSOR_SERVICE_MAX_MEMORY || '512M',
     error_file: `${LOG_DIR}/sensor-service-error.log`,
     out_file: `${LOG_DIR}/sensor-service-out.log`,
     log_date_format: 'YYYY-MM-DD HH:mm:ss.SSS',
@@ -98,6 +101,7 @@ const apps = [
     min_uptime: '5s',
     restart_delay: 2000,
     exp_backoff_restart_delay: 1000,
+    max_memory_restart: process.env.STORAGE_SERVICE_MAX_MEMORY || '512M',
     error_file: `${LOG_DIR}/storage-service-error.log`,
     out_file: `${LOG_DIR}/storage-service-out.log`,
     log_date_format: 'YYYY-MM-DD HH:mm:ss.SSS',
@@ -118,6 +122,7 @@ const apps = [
     min_uptime: '5s',
     restart_delay: 2000,
     exp_backoff_restart_delay: 1000,
+    max_memory_restart: process.env.MODULE_SERVICE_MAX_MEMORY || '256M',
     error_file: `${LOG_DIR}/module-service-error.log`,
     out_file: `${LOG_DIR}/module-service-out.log`,
     log_date_format: 'YYYY-MM-DD HH:mm:ss.SSS',
@@ -136,6 +141,7 @@ const apps = [
     min_uptime: '5s',
     restart_delay: 2000,
     exp_backoff_restart_delay: 1000,
+    max_memory_restart: process.env.CAMERA_SERVICE_MAX_MEMORY || '768M',
     error_file: `${LOG_DIR}/camera-service-error.log`,
     out_file: `${LOG_DIR}/camera-service-out.log`,
     log_date_format: 'YYYY-MM-DD HH:mm:ss.SSS',
@@ -154,6 +160,7 @@ const apps = [
     min_uptime: '5s',
     restart_delay: 2000,
     exp_backoff_restart_delay: 1000,
+    max_memory_restart: process.env.WEB_SERVER_MAX_MEMORY || '256M',
     error_file: `${LOG_DIR}/web-server-error.log`,
     out_file: `${LOG_DIR}/web-server-out.log`,
     log_date_format: 'YYYY-MM-DD HH:mm:ss.SSS',
@@ -173,6 +180,7 @@ const apps = [
     min_uptime: '5s',
     restart_delay: 2000,
     exp_backoff_restart_delay: 1000,
+    max_memory_restart: process.env.FLEET_SERVICE_MAX_MEMORY || '256M',
     error_file: `${LOG_DIR}/fleet-service-error.log`,
     out_file: `${LOG_DIR}/fleet-service-out.log`,
     log_date_format: 'YYYY-MM-DD HH:mm:ss.SSS',
@@ -192,6 +200,7 @@ const apps = [
     min_uptime: '5s',
     restart_delay: 2000,
     exp_backoff_restart_delay: 1000,
+    max_memory_restart: process.env.SPOKE_AGENT_MAX_MEMORY || '512M',
     error_file: `${LOG_DIR}/spoke-agent-service-error.log`,
     out_file: `${LOG_DIR}/spoke-agent-service-out.log`,
     log_date_format: 'YYYY-MM-DD HH:mm:ss.SSS',

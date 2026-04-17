@@ -34,6 +34,7 @@
     "services:restart": "pm2 restart ecosystem.config.cjs",
     "services:logs": "pm2 logs",
     "services:status": "pm2 status",
+    "services:setup-logs": "pm2 install pm2-logrotate && pm2 set pm2-logrotate:max_size 10M && pm2 set pm2-logrotate:retain 7 && pm2 set pm2-logrotate:compress true && pm2 set pm2-logrotate:workerInterval 60 && pm2 set pm2-logrotate:rotateInterval '0 0 * * *'",
     "services:dev": "concurrently \"npm run sensor-service\" \"npm run storage-service\" \"npm run module-service\" \"npm run web:dev\"",
     "services:dev:all": "pnpm run web:build && concurrently \"npm run sensor-service\" \"npm run storage-service\" \"npm run module-service\" \"npm run fleet-service\" \"npm run spoke-agent-service\" \"npm run web:server\"",
     "test:py": "pytest test/hardware-manager/ -v",
