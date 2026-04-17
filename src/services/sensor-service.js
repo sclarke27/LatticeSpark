@@ -997,8 +997,13 @@ async function initializeCoordinator() {
       const comps = getComponentsWithCamera();
       io.emit('components', comps);
 
-      // Prune lastStoragePush and skipStorageIds for removed components
+      // Prune per-component Maps for components that no longer exist.
+      // Without this, latestDataCache/lastStoragePush/skipStorageIds grow
+      // every time a component is renamed or a remote spoke rotates IDs.
       const validIds = new Set(comps.map(c => c.id));
+      for (const id of latestDataCache.keys()) {
+        if (!validIds.has(id)) latestDataCache.delete(id);
+      }
       for (const id of lastStoragePush.keys()) {
         if (!validIds.has(id)) lastStoragePush.delete(id);
       }
