@@ -28,6 +28,7 @@ import { readFile } from 'fs/promises';
 import { createHardwareManagerClient } from '../hardware-manager-client/hardware-manager-client.js';
 import { CircuitBreaker } from '../utils/circuit-breaker.js';
 import { createLogger } from '../utils/logger.js';
+import { withTimeout } from '../utils/timeout.js';
 
 const log = createLogger('sensor-coordinator');
 
@@ -72,6 +73,15 @@ export class SensorCoordinator extends EventEmitter {
   static BREAKER_THRESHOLD = 15;   // failures before opening
   static BREAKER_COOLDOWN = 5000;  // base cooldown ms (doubles on each re-open, max 60s)
   static BREAKER_MAX_COOLDOWN = 60000;
+
+  // Upper bounds for hardware-manager RPC calls. The hwClient has its own
+  // 10s per-request timeout, but these wrap it at the coordinator layer per
+  // CLAUDE.md's "Timeouts on all I/O" rule, so a hung hwClient cannot block
+  // the event loop indefinitely even if its own timer is starved.
+  static REGISTER_TIMEOUT_MS = 15000;
+  static INITIALIZE_TIMEOUT_MS = 15000;
+  static READ_TIMEOUT_MS = 10000;
+  static WRITE_TIMEOUT_MS = 10000;
 
   /**
    * Initialize coordinator.
@@ -156,10 +166,18 @@ export class SensorCoordinator extends EventEmitter {
       };
 
       // Register with hardware manager
-      await this.#hwClient.register(componentId, type, driverConfig);
+      await withTimeout(
+        this.#hwClient.register(componentId, type, driverConfig),
+        SensorCoordinator.REGISTER_TIMEOUT_MS,
+        `hwClient.register ${componentId}`
+      );
 
       // Initialize component
-      await this.#hwClient.initialize(componentId);
+      await withTimeout(
+        this.#hwClient.initialize(componentId),
+        SensorCoordinator.INITIALIZE_TIMEOUT_MS,
+        `hwClient.initialize ${componentId}`
+      );
 
       // Store component info
       this.#components.set(componentId, {
@@ -221,7 +239,11 @@ export class SensorCoordinator extends EventEmitter {
     }
 
     try {
-      const data = await this.#hwClient.read(componentId);
+      const data = await withTimeout(
+        this.#hwClient.read(componentId),
+        SensorCoordinator.READ_TIMEOUT_MS,
+        `hwClient.read ${componentId}`
+      );
 
       // Success - reset breaker
       const { wasOpen } = breaker.recordSuccess();
@@ -264,7 +286,11 @@ export class SensorCoordinator extends EventEmitter {
     }
 
     try {
-      const result = await this.#hwClient.write(componentId, data);
+      const result = await withTimeout(
+        this.#hwClient.write(componentId, data),
+        SensorCoordinator.WRITE_TIMEOUT_MS,
+        `hwClient.write ${componentId}`
+      );
 
       // Emit write event
       this.emit('component:write', {
