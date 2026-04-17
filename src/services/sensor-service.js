@@ -52,11 +52,39 @@ const service = new BaseService('sensor-service', { port: PORT });
 const { app, httpServer } = service;
 const io = new Server(httpServer, {
   transports: ['websocket'],
+  maxHttpBufferSize: parseInt(process.env.SOCKETIO_MAX_BUFFER_BYTES || '1000000', 10),
   cors: {
     origin: '*',
     methods: ['GET', 'POST']
   }
 });
+
+// Slow-client protection: a dashboard tab in a half-alive state (backgrounded,
+// TCP alive but not consuming) will accumulate sensor:batch frames in the
+// per-socket ws sendBuffer. Over days this is unbounded. Periodically disconnect
+// any client whose outbound buffer exceeds threshold.
+const SLOW_CLIENT_BUFFER_BYTES = parseInt(
+  process.env.SLOW_CLIENT_BUFFER_BYTES || String(2 * 1024 * 1024), 10
+);
+const SLOW_CLIENT_CHECK_MS = parseInt(process.env.SLOW_CLIENT_CHECK_MS || '30000', 10);
+let slowClientTimer = null;
+let slowClientsDisconnected = 0;
+
+function checkSlowClients() {
+  for (const socket of io.sockets.sockets.values()) {
+    const ws = socket.conn?.transport?.socket;
+    const buffered = ws?.bufferedAmount ?? 0;
+    if (buffered > SLOW_CLIENT_BUFFER_BYTES) {
+      slowClientsDisconnected++;
+      log.warn({
+        socketId: socket.id,
+        bufferedBytes: buffered,
+        thresholdBytes: SLOW_CLIENT_BUFFER_BYTES
+      }, 'Disconnecting slow client (outbound buffer exceeds threshold)');
+      socket.disconnect(true);
+    }
+  }
+}
 
 // Socket.IO auth: require API key when configured (via auth object or X-API-Key header)
 if (API_KEY) {
@@ -1083,9 +1111,12 @@ service.initialize = async () => {
       remoteComponents: remoteComponentIndex.size,
       arduinoReaders: arduinoReaders.size,
       arduinoComponents: arduinoComponents.length,
-      storageConnected: storageSocket?.connected === true
+      storageConnected: storageSocket?.connected === true,
+      slowClientsDisconnected
     })
   });
+  slowClientTimer = setInterval(checkSlowClients, SLOW_CLIENT_CHECK_MS);
+  slowClientTimer.unref();
   log.info('Ready - WebSocket: ws://localhost:%d', PORT);
   log.info('Storage Service (Socket.IO): %s', STORAGE_SERVICE_URL);
 };
@@ -1094,6 +1125,10 @@ service.onShutdown = async () => {
   if (stopHealthMonitor) {
     stopHealthMonitor();
     stopHealthMonitor = null;
+  }
+  if (slowClientTimer) {
+    clearInterval(slowClientTimer);
+    slowClientTimer = null;
   }
 
   // Disconnect from storage-service
