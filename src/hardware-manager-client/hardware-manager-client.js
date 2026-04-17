@@ -155,17 +155,22 @@ export class HardwareManagerClient extends EventEmitter {
         reject(error);
       });
 
-      // Wait for ready notification
-      const readyTimeout = setTimeout(() => {
+      // Wait for ready notification. Bind via a named handler so the timeout
+      // path can remove it explicitly — otherwise each failed start() leaves
+      // a stale 'ready' listener attached, which bloats under restart loops.
+      let readyTimeout;
+      const onReady = () => {
+        clearTimeout(readyTimeout);
+        this.#restartAttempts = 0;  // Reset on successful start
+        resolve();
+      };
+      readyTimeout = setTimeout(() => {
+        this.removeListener('ready', onReady);
         this.cleanup();
         reject(new Error('Hardware manager did not send ready signal'));
       }, this.#config.timeout);
 
-      this.once('ready', () => {
-        clearTimeout(readyTimeout);
-        this.#restartAttempts = 0;  // Reset on successful start
-        resolve();
-      });
+      this.once('ready', onReady);
     });
   }
 
