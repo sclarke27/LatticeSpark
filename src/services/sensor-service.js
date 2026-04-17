@@ -86,6 +86,41 @@ function checkSlowClients() {
   }
 }
 
+// Remote-spoke TTL: on the hub, remoteSpokes only gets entries removed via an
+// explicit /offline call. If a spoke dies without sending /offline (crash,
+// network partition, redeploy under a new nodeId), its entry and all its
+// components linger forever. Periodically evict spokes that haven't checked in.
+const REMOTE_SPOKE_TTL_MS = parseInt(
+  process.env.REMOTE_SPOKE_TTL_MS || String(15 * 60 * 1000), 10
+);
+const REMOTE_SPOKE_PRUNE_MS = parseInt(process.env.REMOTE_SPOKE_PRUNE_MS || '60000', 10);
+let remoteSpokePruneTimer = null;
+let remoteSpokesPruned = 0;
+
+function pruneStaleRemoteSpokes() {
+  const cutoff = Date.now() - REMOTE_SPOKE_TTL_MS;
+  let pruned = 0;
+  for (const [nodeId, spoke] of remoteSpokes.entries()) {
+    if (spoke?.lastSeen && spoke.lastSeen >= cutoff) continue;
+    for (const component of spoke?.components || []) {
+      remoteComponentIndex.delete(component.id);
+      latestDataCache.delete(component.id);
+      lastStoragePush.delete(component.id);
+    }
+    remoteSpokes.delete(nodeId);
+    remoteSpokesPruned++;
+    pruned++;
+    log.warn({
+      nodeId,
+      lastSeen: spoke?.lastSeen ? new Date(spoke.lastSeen).toISOString() : null,
+      ttlMs: REMOTE_SPOKE_TTL_MS
+    }, 'Pruned stale remote spoke');
+  }
+  if (pruned > 0) {
+    io.emit('components', getComponentsWithCamera());
+  }
+}
+
 // Socket.IO auth: require API key when configured (via auth object or X-API-Key header)
 if (API_KEY) {
   io.use((socket, next) => {
@@ -1117,11 +1152,14 @@ service.initialize = async () => {
       arduinoReaders: arduinoReaders.size,
       arduinoComponents: arduinoComponents.length,
       storageConnected: storageSocket?.connected === true,
-      slowClientsDisconnected
+      slowClientsDisconnected,
+      remoteSpokesPruned
     })
   });
   slowClientTimer = setInterval(checkSlowClients, SLOW_CLIENT_CHECK_MS);
   slowClientTimer.unref();
+  remoteSpokePruneTimer = setInterval(pruneStaleRemoteSpokes, REMOTE_SPOKE_PRUNE_MS);
+  remoteSpokePruneTimer.unref();
   log.info('Ready - WebSocket: ws://localhost:%d', PORT);
   log.info('Storage Service (Socket.IO): %s', STORAGE_SERVICE_URL);
 };
@@ -1134,6 +1172,10 @@ service.onShutdown = async () => {
   if (slowClientTimer) {
     clearInterval(slowClientTimer);
     slowClientTimer = null;
+  }
+  if (remoteSpokePruneTimer) {
+    clearInterval(remoteSpokePruneTimer);
+    remoteSpokePruneTimer = null;
   }
 
   // Disconnect from storage-service
