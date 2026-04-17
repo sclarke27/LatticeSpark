@@ -20,6 +20,8 @@ import { BaseService } from './base-service.js';
 import { requireApiKey as createApiKeyMiddleware } from '../utils/auth.js';
 import { loadClusterConfig } from '../cluster/cluster-config.js';
 import { createLogger } from '../utils/logger.js';
+import { startHealthMonitor } from '../utils/health-monitor.js';
+import { statSync } from 'fs';
 
 const log = createLogger('storage-service');
 const __filename = fileURLToPath(import.meta.url);
@@ -205,6 +207,9 @@ app.use('/api', createApiKeyMiddleware(API_KEY));
 // Periodic task handles for cleanup on shutdown
 const periodicTimers = [];
 
+let ingestCount = 0;
+let stopHealthMonitor = null;
+
 function startPeriodicTasks() {
   // Cleanup old data hourly
   periodicTimers.push(setInterval(() => {
@@ -248,6 +253,7 @@ function setupSocketServer() {
         if (!sensorId || !data) return;
         const ts = timestamp || Date.now() / 1000;
         storeSensorReading(sensorId, data, ts);
+        ingestCount++;
       } catch (error) {
         log.error({ err: error, sensorId }, 'Socket store error');
       }
@@ -362,12 +368,29 @@ service.initialize = async () => {
     log.error({ err }, 'Failed to initialize database');
     process.exit(1);
   }
+  stopHealthMonitor = startHealthMonitor({
+    log,
+    intervalMs: parseInt(process.env.HEALTH_HEARTBEAT_MS || '60000', 10),
+    getStats: () => {
+      let dbSizeMb = null;
+      try { dbSizeMb = Math.round(statSync(DB_PATH).size / 1024 / 1024); } catch {}
+      const batch = ingestCount;
+      ingestCount = 0;
+      return {
+        ingestsSinceLast: batch,
+        dbSizeMb,
+        storageClients: storageIo?.sockets?.sockets?.size ?? 0
+      };
+    }
+  });
   log.info('Ready - Retention: %d hours', RETENTION_HOURS);
   log.info('Database: %s (WAL mode)', DB_PATH);
 };
 
 // Override onShutdown for database cleanup
 service.onShutdown = async () => {
+  if (stopHealthMonitor) { stopHealthMonitor(); stopHealthMonitor = null; }
+
   periodicTimers.forEach(id => clearTimeout(id));
   periodicTimers.length = 0;
 

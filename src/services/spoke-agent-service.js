@@ -13,6 +13,7 @@ import { loadClusterConfig } from '../cluster/cluster-config.js';
 import { atomicWriteJson } from '../utils/persistence.js';
 import { authHeaders } from '../utils/auth.js';
 import { createLogger } from '../utils/logger.js';
+import { startHealthMonitor } from '../utils/health-monitor.js';
 
 const log = createLogger('spoke-agent');
 
@@ -48,6 +49,7 @@ let fleetSocket = null;
 let heartbeatTimer = null;
 let moduleSyncTimer = null;
 let queueCompactTimer = null;
+let stopHealthMonitor = null;
 let flushInProgress = false;
 let localComponents = [];
 let firmwareState = { sources: {} };
@@ -688,6 +690,7 @@ async function requestArduinoIngestAction(sourceId, action) {
 
 async function shutdown(signal) {
   log.info({ signal }, 'Shutting down');
+  if (stopHealthMonitor) { stopHealthMonitor(); stopHealthMonitor = null; }
   if (heartbeatTimer) clearInterval(heartbeatTimer);
   if (moduleSyncTimer) clearInterval(moduleSyncTimer);
   if (queueCompactTimer) clearInterval(queueCompactTimer);
@@ -718,6 +721,20 @@ async function main() {
   queueCompactTimer = setInterval(() => {
     queue.compact().catch(() => {});
   }, 30000);
+
+  stopHealthMonitor = startHealthMonitor({
+    log,
+    intervalMs: parseInt(process.env.HEALTH_HEARTBEAT_MS || '60000', 10),
+    getStats: () => ({
+      queueDepth: queue.pendingCount(),
+      ackedSeq: queue.getAckedSeq(),
+      hubConnected: fleetSocket?.connected === true,
+      sensorConnected: sensorSocket?.connected === true,
+      localComponents: localComponents.length,
+      flushInProgress,
+      activeFirmwareJob: activeFirmwareJob || null
+    })
+  });
 
   log.info('Hub target: %s', HUB_URL);
   log.info('Running as node "%s" in mode "%s"', NODE_ID, SPOKE_MODE);

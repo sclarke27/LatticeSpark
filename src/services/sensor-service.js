@@ -30,6 +30,7 @@ import { normalizeNodeId } from '../utils/normalization.js';
 import { io as ioClient } from 'socket.io-client';
 import { BaseService } from './base-service.js';
 import { createLogger } from '../utils/logger.js';
+import { startHealthMonitor } from '../utils/health-monitor.js';
 
 const log = createLogger('sensor-service');
 const __filename = fileURLToPath(import.meta.url);
@@ -94,6 +95,8 @@ const BATCH_INTERVAL = parseInt(process.env.BATCH_INTERVAL || '100', 10);
 let pendingBatch = {};
 let batchTimer = null;
 const skipStorageIds = new Set();
+
+let stopHealthMonitor = null;
 
 function normalizeArduinoTimestamp(rawTs) {
   const nowSec = Date.now() / 1000;
@@ -1065,11 +1068,34 @@ service.initialize = async () => {
   log.info('Role: %s', ROLE);
   connectToStorageService();
   await initializeCoordinator();
+  stopHealthMonitor = startHealthMonitor({
+    log,
+    intervalMs: parseInt(process.env.HEALTH_HEARTBEAT_MS || '60000', 10),
+    getStats: () => ({
+      wsClients: io.sockets.sockets.size,
+      pendingBatchKeys: Object.keys(pendingBatch).length,
+      pollingComponents: pollingIntervals.size,
+      inFlightReads,
+      latestDataCache: latestDataCache.size,
+      lastStoragePush: lastStoragePush.size,
+      skipStorageIds: skipStorageIds.size,
+      remoteSpokes: remoteSpokes.size,
+      remoteComponents: remoteComponentIndex.size,
+      arduinoReaders: arduinoReaders.size,
+      arduinoComponents: arduinoComponents.length,
+      storageConnected: storageSocket?.connected === true
+    })
+  });
   log.info('Ready - WebSocket: ws://localhost:%d', PORT);
   log.info('Storage Service (Socket.IO): %s', STORAGE_SERVICE_URL);
 };
 
 service.onShutdown = async () => {
+  if (stopHealthMonitor) {
+    stopHealthMonitor();
+    stopHealthMonitor = null;
+  }
+
   // Disconnect from storage-service
   if (storageSocket) {
     storageSocket.disconnect();
