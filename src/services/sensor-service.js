@@ -326,21 +326,32 @@ function startArduinoReader(source) {
   try {
     configureArduinoPort(source);
     const stream = createReadStream(source.port, { encoding: 'utf-8' });
-    stream.on('error', (err) => {
-      log.warn({ sourceId: source.sourceId, err }, 'Arduino stream error');
-      stopArduinoReader(source.sourceId);
-    });
+    const sourceId = source.sourceId;
+
+    // Any terminal event on the stream or readline must remove the reader from
+    // arduinoReaders — otherwise a flapping serial port (USB unplug, reboot)
+    // leaves orphaned entries and prevents a fresh reader from starting.
+    const teardown = (reason, err) => {
+      if (!arduinoReaders.has(sourceId)) return;
+      if (err) log.warn({ sourceId, err, reason }, 'Arduino reader terminated');
+      else log.info({ sourceId, reason }, 'Arduino reader terminated');
+      stopArduinoReader(sourceId);
+    };
+
+    stream.on('error', (err) => teardown('stream-error', err));
+    stream.on('close', () => teardown('stream-close'));
+
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
     rl.on('line', (line) => {
       handleArduinoLine(source, line).catch((err) => {
-        log.warn({ sourceId: source.sourceId, err }, 'Arduino parse error');
+        log.warn({ sourceId, err }, 'Arduino parse error');
       });
     });
-    rl.on('error', (err) => {
-      log.warn({ sourceId: source.sourceId, err }, 'Arduino reader error');
-    });
-    arduinoReaders.set(source.sourceId, { stream, rl, source });
-    log.info({ sourceId: source.sourceId, port: source.port }, 'Arduino source active');
+    rl.on('error', (err) => teardown('readline-error', err));
+    rl.on('close', () => teardown('readline-close'));
+
+    arduinoReaders.set(sourceId, { stream, rl, source });
+    log.info({ sourceId, port: source.port }, 'Arduino source active');
   } catch (err) {
     log.warn({ sourceId: source.sourceId, err }, 'Failed to start Arduino reader');
   }
