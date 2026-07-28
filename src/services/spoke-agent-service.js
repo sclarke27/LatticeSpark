@@ -21,6 +21,13 @@ process.on('unhandledRejection', (reason) => {
   log.error({ err: reason }, 'Unhandled promise rejection');
 });
 
+process.on('uncaughtException', (err) => {
+  try {
+    log.fatal({ err }, 'Uncaught exception, exiting');
+  } catch { /* logging must never block the exit */ }
+  process.exit(1);
+});
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const PROJECT_ROOT = join(__dirname, '..', '..');

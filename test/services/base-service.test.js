@@ -1,4 +1,4 @@
-import { describe, it, afterEach } from 'node:test';
+import { describe, it, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { BaseService } from '../../src/services/base-service.js';
 
@@ -80,6 +80,65 @@ describe('BaseService', () => {
     service = new BaseService('test-service', { port: 9999 });
     await service.initialize(); // should not throw
     await service.onShutdown(); // should not throw
+  });
+
+  it('registers a last-resort uncaughtException handler that logs and exits 1', () => {
+    service = new BaseService('test-service', { port: 9999 });
+    const events = ['SIGINT', 'SIGTERM', 'unhandledRejection', 'uncaughtException'];
+    const before = Object.fromEntries(events.map((e) => [e, process.listeners(e)]));
+
+    service._setupProcessHandlers();
+    try {
+      const added = process.listeners('uncaughtException')
+        .filter((l) => !before.uncaughtException.includes(l));
+      assert.equal(added.length, 1);
+
+      const fatalCalls = [];
+      service.log = { fatal: (...args) => fatalCalls.push(args) };
+      const exitMock = mock.method(process, 'exit', () => {});
+      try {
+        added[0](new Error('boom'));
+        assert.equal(fatalCalls.length, 1);
+        assert.equal(fatalCalls[0][0].err.message, 'boom');
+        assert.equal(exitMock.mock.calls.length, 1);
+        assert.equal(exitMock.mock.calls[0].arguments[0], 1);
+      } finally {
+        exitMock.mock.restore();
+      }
+    } finally {
+      for (const e of events) {
+        for (const l of process.listeners(e)) {
+          if (!before[e].includes(l)) process.removeListener(e, l);
+        }
+      }
+    }
+  });
+
+  it('uncaughtException handler exits 1 even if logging throws', () => {
+    service = new BaseService('test-service', { port: 9999 });
+    const events = ['SIGINT', 'SIGTERM', 'unhandledRejection', 'uncaughtException'];
+    const before = Object.fromEntries(events.map((e) => [e, process.listeners(e)]));
+
+    service._setupProcessHandlers();
+    try {
+      const added = process.listeners('uncaughtException')
+        .filter((l) => !before.uncaughtException.includes(l));
+      service.log = { fatal: () => { throw new Error('logger broken'); } };
+      const exitMock = mock.method(process, 'exit', () => {});
+      try {
+        added[0](new Error('boom'));
+        assert.equal(exitMock.mock.calls.length, 1);
+        assert.equal(exitMock.mock.calls[0].arguments[0], 1);
+      } finally {
+        exitMock.mock.restore();
+      }
+    } finally {
+      for (const e of events) {
+        for (const l of process.listeners(e)) {
+          if (!before[e].includes(l)) process.removeListener(e, l);
+        }
+      }
+    }
   });
 
   it('accepts expressOptions for JSON body parsing', async () => {

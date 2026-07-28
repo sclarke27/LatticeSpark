@@ -113,6 +113,14 @@ export class BaseService {
     process.on('unhandledRejection', (reason) => {
       this.log.error({ err: reason }, 'Unhandled promise rejection');
     });
+    process.on('uncaughtException', (err) => {
+      // Last resort: process state is undefined after an uncaught throw.
+      // Log and exit non-zero so PM2 restarts us cleanly.
+      try {
+        this.log.fatal({ err }, 'Uncaught exception, exiting');
+      } catch { /* logging must never block the exit */ }
+      process.exit(1);
+    });
   }
 
   /** @private */

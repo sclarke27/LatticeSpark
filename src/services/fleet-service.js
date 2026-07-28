@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { Server } from 'socket.io';
 import { ArtifactStore } from '../fleet/artifact-store.js';
 import { LeaseManager, LEASE_DEFAULT_TTL_MS } from '../fleet/lease-manager.js';
+import { postJsonToSensorService } from '../fleet/sensor-relay.js';
 import { canonicalComponentId, loadClusterConfig } from '../cluster/cluster-config.js';
 import { requireApiKey as createApiKeyMiddleware, requireAdminToken as createAdminMiddleware } from '../utils/auth.js';
 import { normalizeNodeId } from '../utils/normalization.js';
@@ -25,6 +26,7 @@ const SENSOR_SERVICE_URL = process.env.SENSOR_SERVICE_URL || 'http://localhost:3
 const API_KEY = clusterConfig.apiKey || '';
 const ADMIN_TOKEN = process.env.LATTICESPARK_ADMIN_TOKEN || API_KEY;
 const SOCKET_TIMEOUT_MS = parseInt(process.env.FLEET_SOCKET_TIMEOUT_MS || '10000', 10);
+const RELAY_TIMEOUT_MS = parseInt(process.env.FLEET_RELAY_TIMEOUT_MS || '8000', 10);
 
 const service = new BaseService('fleet-service', { port: PORT, host: '0.0.0.0', expressOptions: { limit: '100mb' } });
 const { app, httpServer } = service;
@@ -74,18 +76,10 @@ function listSpokes() {
 }
 
 async function postToSensorService(path, body) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (API_KEY) headers['X-API-Key'] = API_KEY;
-  const response = await fetch(`${SENSOR_SERVICE_URL}${path}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body)
+  return postJsonToSensorService(SENSOR_SERVICE_URL, path, body, {
+    apiKey: API_KEY,
+    timeoutMs: RELAY_TIMEOUT_MS
   });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Sensor service error ${response.status}: ${text}`);
-  }
-  return response.json();
 }
 
 function getOrCreateFirmwareJobMap(nodeId) {

@@ -60,6 +60,7 @@ export class SensorCoordinator extends EventEmitter {
     this.#components = new Map();
     this.#isInitialized = false;
     this.#circuitBreakers = new Map();
+    this.#restartGeneration = 0;
   }
 
   // Private fields
@@ -68,6 +69,7 @@ export class SensorCoordinator extends EventEmitter {
   #components;
   #isInitialized;
   #circuitBreakers; // per-component failure tracking
+  #restartGeneration; // increments per hardware-manager respawn
 
   // Circuit breaker settings
   static BREAKER_THRESHOLD = 15;   // failures before opening
@@ -111,6 +113,13 @@ export class SensorCoordinator extends EventEmitter {
 
       this.#hwClient.on('exit', (info) => {
         this.emit('hardware-manager-exit', info);
+      });
+
+      this.#hwClient.on('restart', () => {
+        this.#restartGeneration++;
+        this.#reRegisterComponents(this.#restartGeneration).catch((err) => {
+          log.error({ err }, 'Re-registration after hardware manager restart failed');
+        });
       });
 
       // Step 3: Register and initialize components
@@ -187,10 +196,42 @@ export class SensorCoordinator extends EventEmitter {
       });
 
       this.emit('component:ready', { componentId, type });
+      return true;
     } catch (error) {
       log.error({ componentId, err: error }, 'Failed to initialize component');
       this.emit('component:error', { componentId, error });
       // Don't re-throw - skip failed components and continue with others
+      return false;
+    }
+  }
+
+  /**
+   * Re-register all known components after the hardware manager process
+   * respawns. The fresh Python process starts with an empty driver registry,
+   * so every stored component must be registered and initialized again.
+   *
+   * @param {number} generation - Restart generation this replay belongs to
+   * @private
+   */
+  async #reRegisterComponents(generation) {
+    const entries = Array.from(this.#components.values());
+    log.info({ count: entries.length }, 'Hardware manager restarted — re-registering components');
+
+    for (const { id, config } of entries) {
+      // Abort if a newer restart superseded this replay, or we shut down
+      if (generation !== this.#restartGeneration || !this.#hwClient) {
+        log.warn({ generation }, 'Re-registration aborted (superseded or shutting down)');
+        return;
+      }
+
+      const ok = await this.#registerComponent(id, config);
+
+      // Fresh process is healthy for this component — clear stale breaker
+      // state so polling recovers immediately instead of waiting out the
+      // accrued cooldown (up to 60s). Failed components keep their backoff.
+      if (ok) {
+        this.#circuitBreakers.get(id)?.reset();
+      }
     }
   }
 

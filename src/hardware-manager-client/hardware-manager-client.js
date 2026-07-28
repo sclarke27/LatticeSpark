@@ -129,8 +129,32 @@ export class HardwareManagerClient extends EventEmitter {
         process.stderr.write(`[HW-Manager] ${data}`);
       });
 
+      // Guard stdin against EPIPE: if the Python process dies mid-write, the
+      // stdin stream emits 'error'; with no listener that is an
+      // uncaughtException and crashes the service. Requests in flight are
+      // rejected by the 'exit' handler (or their own timeout), so log only —
+      // do NOT re-emit 'error' here.
+      this.#process.stdin.on('error', (error) => {
+        console.error(`[HW-Manager] stdin write error: ${error.message}`);
+      });
+
+      // Wait-for-ready state, declared before the process handlers below so
+      // they can settle this start() attempt (clear the timeout, detach the
+      // listener) when the child exits or errors before ready.
+      let readyTimeout;
+      const onReady = () => {
+        clearTimeout(readyTimeout);
+        this.#restartAttempts = 0;  // Reset on successful start
+        resolve();
+      };
+
       // Handle process exit
       this.#process.on('exit', (code, signal) => {
+        // Settle this start() attempt so its stale ready-timeout cannot fire
+        // later and tear down a newer process spawned by a restart.
+        clearTimeout(readyTimeout);
+        this.removeListener('ready', onReady);
+
         this.#isReady = false;
         this.#process = null;
 
@@ -143,30 +167,38 @@ export class HardwareManagerClient extends EventEmitter {
 
         this.emit('exit', { code, signal });
 
+        // No-op if this start() already resolved
+        reject(new Error(`Process exited before ready (code: ${code}, signal: ${signal})`));
+
         // Auto-restart if not intentionally shutting down
         if (!this.#shuttingDown) {
           this.#scheduleRestart();
         }
       });
 
-      // Handle process errors
+      // Handle process errors. 'exit' may never fire after a spawn 'error'
+      // (ENOENT/EAGAIN), so teardown + restart scheduling must happen here.
+      // emit is last so teardown/reject/restart complete even if no 'error'
+      // listener is attached (an unhandled emit would throw).
       this.#process.on('error', (error) => {
-        this.emit('error', error);
+        clearTimeout(readyTimeout);
+        this.removeListener('ready', onReady);
+        this.#teardownProcess();
         reject(error);
+        if (!this.#shuttingDown) {
+          this.#scheduleRestart();
+        }
+        this.emit('error', error);
       });
 
       // Wait for ready notification. Bind via a named handler so the timeout
       // path can remove it explicitly — otherwise each failed start() leaves
       // a stale 'ready' listener attached, which bloats under restart loops.
-      let readyTimeout;
-      const onReady = () => {
-        clearTimeout(readyTimeout);
-        this.#restartAttempts = 0;  // Reset on successful start
-        resolve();
-      };
+      // Teardown (not cleanup) so #shuttingDown stays false and the killed
+      // child's 'exit' event drives the auto-restart chain.
       readyTimeout = setTimeout(() => {
         this.removeListener('ready', onReady);
-        this.cleanup();
+        this.#teardownProcess();
         reject(new Error('Hardware manager did not send ready signal'));
       }, this.#config.timeout);
 
@@ -179,6 +211,9 @@ export class HardwareManagerClient extends EventEmitter {
    * @private
    */
   #scheduleRestart() {
+    if (this.#restartTimer || this.#shuttingDown) {
+      return; // restart already pending, or intentional shutdown
+    }
     if (this.#restartAttempts >= HardwareManagerClient.RESTART_MAX_RETRIES) {
       console.error(`[HW-Manager] Max restart attempts (${HardwareManagerClient.RESTART_MAX_RETRIES}) reached. Giving up.`);
       this.emit('error', new Error('Hardware manager failed to restart after max attempts'));
@@ -317,9 +352,17 @@ export class HardwareManagerClient extends EventEmitter {
       // Store pending request
       this.#pendingRequests.set(id, { resolve, reject, timeout });
 
-      // Send request
+      // Send request. stdin.write can throw synchronously (e.g. missing or
+      // destroyed stream) — clean up the pending entry so the timeout timer
+      // does not linger.
       const message = JSON.stringify(request) + '\n';
-      this.#process.stdin.write(message);
+      try {
+        this.#process.stdin.write(message);
+      } catch (error) {
+        clearTimeout(timeout);
+        this.#pendingRequests.delete(id);
+        reject(error);
+      }
     });
   }
 
@@ -391,34 +434,22 @@ export class HardwareManagerClient extends EventEmitter {
     return this.#isReady;
   }
 
-  cleanup() {
-    // Mark as intentional shutdown — suppress auto-restart
-    this.#shuttingDown = true;
-
-    // Cancel any pending restart timer
-    if (this.#restartTimer) {
-      clearTimeout(this.#restartTimer);
-      this.#restartTimer = null;
-    }
-
-    // Remove process-level listeners
-    if (this.#exitHandler) {
-      process.removeListener('exit', this.#exitHandler);
-      process.removeListener('SIGINT', this.#sigintHandler);
-      process.removeListener('SIGTERM', this.#sigtermHandler);
-      this.#exitHandler = null;
-      this.#sigintHandler = null;
-      this.#sigtermHandler = null;
-    }
-
-    if (!this.#process) {
-      return;
-    }
-
+  /**
+   * Tear down the child process and pending state WITHOUT latching
+   * #shuttingDown or removing the process signal handlers. Used by
+   * failed-start paths so the exit-driven auto-restart chain keeps running.
+   *
+   * @private
+   */
+  #teardownProcess() {
     // Close line reader
     if (this.#lineReader) {
       this.#lineReader.close();
       this.#lineReader = null;
+    }
+
+    if (!this.#process) {
+      return; // idempotent — breaks error→kill→error recursion
     }
 
     // Kill process with SIGKILL fallback
@@ -442,6 +473,29 @@ export class HardwareManagerClient extends EventEmitter {
     }
     this.#pendingRequests.clear();
   }
+
+  cleanup() {
+    // Mark as intentional shutdown — suppress auto-restart
+    this.#shuttingDown = true;
+
+    // Cancel any pending restart timer
+    if (this.#restartTimer) {
+      clearTimeout(this.#restartTimer);
+      this.#restartTimer = null;
+    }
+
+    // Remove process-level listeners
+    if (this.#exitHandler) {
+      process.removeListener('exit', this.#exitHandler);
+      process.removeListener('SIGINT', this.#sigintHandler);
+      process.removeListener('SIGTERM', this.#sigtermHandler);
+      this.#exitHandler = null;
+      this.#sigintHandler = null;
+      this.#sigtermHandler = null;
+    }
+
+    this.#teardownProcess();
+  }
 }
 
 /**
@@ -454,6 +508,13 @@ export class HardwareManagerClient extends EventEmitter {
  */
 export async function createHardwareManagerClient(config = {}) {
   const client = new HardwareManagerClient(config);
-  await client.start();
+  try {
+    await client.start();
+  } catch (error) {
+    // A failed first start must not leave an orphaned client auto-restarting
+    // with no listeners attached (an unhandled 'error' emit would crash).
+    client.cleanup();
+    throw error;
+  }
   return client;
 }

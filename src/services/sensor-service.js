@@ -17,7 +17,7 @@ import { readFile } from 'fs/promises';
 import { createReadStream, existsSync } from 'fs';
 import { spawnSync } from 'child_process';
 import readline from 'readline';
-import { createSensorCoordinator } from '../coordinator/sensor-coordinator.js';
+import { SensorCoordinator } from '../coordinator/sensor-coordinator.js';
 import { CameraClient } from '../camera-client/camera-client.js';
 import {
   canonicalComponentId,
@@ -1020,7 +1020,22 @@ async function initializeCoordinator() {
     log.info('Initializing coordinator...');
     log.info('Config file: %s', configFile);
 
-    coordinator = await createSensorCoordinator({ configFile });
+    coordinator = new SensorCoordinator({ configFile });
+
+    // An EventEmitter 'error' with no listener throws an uncaught exception
+    // and kills the process. Attach BEFORE initialize(): the Python bridge
+    // forwards errors (stray stdout, parse failures, restart exhaustion)
+    // while components are still registering.
+    coordinatorListeners.bridgeError = (error) => {
+      log.error({ err: error }, 'Hardware manager bridge error');
+    };
+    coordinatorListeners.bridgeExit = ({ code, signal } = {}) => {
+      log.warn({ code, signal }, 'Hardware manager process exited (auto-restart pending)');
+    };
+    coordinator.on('error', coordinatorListeners.bridgeError);
+    coordinator.on('hardware-manager-exit', coordinatorListeners.bridgeExit);
+
+    await coordinator.initialize();
 
     // Listen to component data events - store refs for cleanup
     coordinatorListeners.data = (event) => {
@@ -1227,6 +1242,12 @@ service.onShutdown = async () => {
     }
     if (coordinatorListeners.ready) {
       coordinator.removeListener('component:ready', coordinatorListeners.ready);
+    }
+    if (coordinatorListeners.bridgeError) {
+      coordinator.removeListener('error', coordinatorListeners.bridgeError);
+    }
+    if (coordinatorListeners.bridgeExit) {
+      coordinator.removeListener('hardware-manager-exit', coordinatorListeners.bridgeExit);
     }
     coordinatorListeners = {};
     await coordinator.shutdown();
