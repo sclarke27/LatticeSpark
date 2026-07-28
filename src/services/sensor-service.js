@@ -97,16 +97,26 @@ const REMOTE_SPOKE_PRUNE_MS = parseInt(process.env.REMOTE_SPOKE_PRUNE_MS || '600
 let remoteSpokePruneTimer = null;
 let remoteSpokesPruned = 0;
 
+// Evict every cache entry attributable to a spoke — registered components
+// plus ids only ever seen via /batch (invisible to component-based sweeps).
+function evictSpokeCacheEntries(spoke) {
+  const ids = new Set();
+  for (const component of spoke?.components || []) ids.add(component.id);
+  for (const id of spoke?.seenIds || []) ids.add(id);
+  for (const id of ids) {
+    remoteComponentIndex.delete(id);
+    latestDataCache.delete(id);
+    lastStoragePush.delete(id);
+  }
+  return ids.size;
+}
+
 function pruneStaleRemoteSpokes() {
   const cutoff = Date.now() - REMOTE_SPOKE_TTL_MS;
   let pruned = 0;
   for (const [nodeId, spoke] of remoteSpokes.entries()) {
     if (spoke?.lastSeen && spoke.lastSeen >= cutoff) continue;
-    for (const component of spoke?.components || []) {
-      remoteComponentIndex.delete(component.id);
-      latestDataCache.delete(component.id);
-      lastStoragePush.delete(component.id);
-    }
+    evictSpokeCacheEntries(spoke);
     remoteSpokes.delete(nodeId);
     remoteSpokesPruned++;
     pruned++;
@@ -644,6 +654,8 @@ app.post('/api/relay/spokes/:nodeId/components', requireApiKey, (req, res) => {
       };
     });
 
+  const prevState = remoteSpokes.get(nodeId) || {};
+
   // Remove any previous component index entries for this node
   for (const [componentId, info] of remoteComponentIndex.entries()) {
     if (info.nodeId === nodeId) {
@@ -651,6 +663,14 @@ app.post('/api/relay/spokes/:nodeId/components', requireApiKey, (req, res) => {
       latestDataCache.delete(componentId);
       lastStoragePush.delete(componentId);
     }
+  }
+
+  // Also evict ids ingested via /batch that were never registered — they are
+  // invisible to the index scan above (e.g. batches that arrived after a hub
+  // restart, before this re-registration).
+  for (const id of prevState.seenIds || []) {
+    latestDataCache.delete(id);
+    lastStoragePush.delete(id);
   }
 
   for (const component of canonicalComponents) {
@@ -662,13 +682,13 @@ app.post('/api/relay/spokes/:nodeId/components', requireApiKey, (req, res) => {
     });
   }
 
-  const prevState = remoteSpokes.get(nodeId) || {};
   remoteSpokes.set(nodeId, {
     nodeId,
     components: canonicalComponents,
     lastSeq: prevState.lastSeq || 0,
     lastSeen: Date.now(),
-    online: true
+    online: true,
+    seenIds: new Set()
   });
 
   io.emit('components', getComponentsWithCamera());
@@ -694,7 +714,9 @@ app.post('/api/relay/spokes/:nodeId/batch', requireApiKey, (req, res) => {
     return;
   }
 
-  const spoke = remoteSpokes.get(nodeId) || { components: [], lastSeq: 0, online: true };
+  const spoke = remoteSpokes.get(nodeId)
+    || { components: [], lastSeq: 0, online: true, seenIds: new Set() };
+  if (!(spoke.seenIds instanceof Set)) spoke.seenIds = new Set();
   if (seq <= spoke.lastSeq) {
     // Idempotent replay: already processed
     res.json({ ack: spoke.lastSeq });
@@ -703,6 +725,7 @@ app.post('/api/relay/spokes/:nodeId/batch', requireApiKey, (req, res) => {
 
   for (const [localComponentId, data] of Object.entries(batch)) {
     const canonicalId = canonicalComponentId(nodeId, localComponentId);
+    spoke.seenIds.add(canonicalId);
     const remoteMeta = remoteComponentIndex.get(canonicalId);
     const skipStorage = Boolean(remoteMeta?.component?.config?.skipStorage);
     processComponentData(canonicalId, data, skipStorage);
@@ -725,13 +748,7 @@ app.post('/api/relay/spokes/:nodeId/offline', requireApiKey, (req, res) => {
     return;
   }
 
-  let removed = 0;
-  for (const component of spoke.components || []) {
-    remoteComponentIndex.delete(component.id);
-    latestDataCache.delete(component.id);
-    lastStoragePush.delete(component.id);
-    removed++;
-  }
+  const removed = evictSpokeCacheEntries(spoke);
   remoteSpokes.delete(nodeId);
   io.emit('components', getComponentsWithCamera());
   res.json({ success: true, removed });
@@ -1203,6 +1220,7 @@ service.initialize = async () => {
       skipStorageIds: skipStorageIds.size,
       remoteSpokes: remoteSpokes.size,
       remoteComponents: remoteComponentIndex.size,
+      remoteSeenIds: Array.from(remoteSpokes.values()).reduce((n, s) => n + (s.seenIds?.size || 0), 0),
       arduinoReaders: arduinoReaders.size,
       arduinoComponents: arduinoComponents.length,
       storageConnected: storageSocket?.connected === true,

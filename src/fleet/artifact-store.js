@@ -1,7 +1,12 @@
-import { mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { existsSync, createWriteStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
 import { join } from 'node:path';
 import crypto from 'node:crypto';
+import { createLogger } from '../utils/logger.js';
+
+const log = createLogger('artifact-store');
+const DEFAULT_KEEP_VERSIONS = 5;
 
 function toSafeId(value) {
   if (typeof value !== 'string') return '';
@@ -41,7 +46,6 @@ export class ArtifactStore {
     await mkdir(bundleDir, { recursive: true });
 
     const zipPath = join(bundleDir, `${this.#kind}.zip`);
-    const manifestPath = join(bundleDir, 'manifest.json');
 
     const zipBuffer = Buffer.from(payload.zipBase64, 'base64');
     if (zipBuffer.length === 0) {
@@ -57,22 +61,21 @@ export class ArtifactStore {
     await writeFile(tmpZip, zipBuffer);
     await rename(tmpZip, zipPath);
 
-    const manifest = {
+    await this.#writeManifest(bundleDir, {
       bundleId,
       version,
       signature: payload.signature || null,
-      archiveChecksum: checksum,
+      checksum,
       metadata: payload.metadata || {},
-      createdAt: Date.now()
-    };
+      manifest: payload.manifest
+    });
 
-    if (payload.manifest && typeof payload.manifest === 'object') {
-      manifest.manifest = payload.manifest;
+    // Bound disk growth — a prune failure must never fail a successful upload
+    try {
+      await this.pruneOldVersions(bundleId);
+    } catch (err) {
+      log.warn({ err, bundleId }, 'Failed to prune old bundle versions');
     }
-
-    const tmpManifest = `${manifestPath}.tmp`;
-    await writeFile(tmpManifest, JSON.stringify(manifest, null, 2));
-    await rename(tmpManifest, manifestPath);
 
     return {
       bundleId,
@@ -80,6 +83,140 @@ export class ArtifactStore {
       archiveChecksum: checksum,
       zipPath
     };
+  }
+
+  /**
+   * Save a bundle from a readable stream (raw archive body) without buffering
+   * it in memory: pipe stream -> incremental sha256 -> temp file -> rename.
+   */
+  async saveBundleFromStream({
+    bundleId,
+    version,
+    stream,
+    archiveChecksum = null,
+    signature = null,
+    metadata = {},
+    manifest = null,
+    maxBytes = 100 * 1024 * 1024
+  }) {
+    const safeBundleId = toSafeId(bundleId);
+    const safeVersion = toSafeId(version);
+    if (!safeBundleId || !safeVersion) {
+      throw new Error('Invalid bundleId or version');
+    }
+
+    const bundleDir = join(this.#baseDir, safeBundleId, safeVersion);
+    await mkdir(bundleDir, { recursive: true });
+
+    const zipPath = join(bundleDir, `${this.#kind}.zip`);
+    const tmpZip = `${zipPath}.tmp-${process.pid}-${Date.now()}`;
+    const hash = crypto.createHash('sha256');
+    let size = 0;
+
+    try {
+      await pipeline(
+        stream,
+        async function* (source) {
+          for await (const chunk of source) {
+            size += chunk.length;
+            if (size > maxBytes) {
+              const err = new Error(`Bundle exceeds ${maxBytes} byte limit`);
+              err.code = 'BUNDLE_TOO_LARGE';
+              throw err;
+            }
+            hash.update(chunk);
+            yield chunk;
+          }
+        },
+        createWriteStream(tmpZip)
+      );
+      if (size === 0) {
+        throw new Error('Bundle zip payload is empty');
+      }
+      const checksum = hash.digest('hex');
+      if (archiveChecksum && archiveChecksum !== checksum) {
+        throw new Error('archiveChecksum mismatch');
+      }
+      await rename(tmpZip, zipPath);
+      await this.#writeManifest(bundleDir, {
+        bundleId: safeBundleId,
+        version: safeVersion,
+        signature,
+        checksum,
+        metadata,
+        manifest
+      });
+
+      try {
+        await this.pruneOldVersions(safeBundleId);
+      } catch (err) {
+        log.warn({ err, bundleId: safeBundleId }, 'Failed to prune old bundle versions');
+      }
+
+      return {
+        bundleId: safeBundleId,
+        version: safeVersion,
+        archiveChecksum: checksum,
+        zipPath
+      };
+    } catch (err) {
+      await rm(tmpZip, { force: true });
+      throw err;
+    }
+  }
+
+  async #writeManifest(bundleDir, { bundleId, version, signature, checksum, metadata, manifest }) {
+    const manifestPath = join(bundleDir, 'manifest.json');
+    const manifestDoc = {
+      bundleId,
+      version,
+      signature: signature || null,
+      archiveChecksum: checksum,
+      metadata: metadata || {},
+      createdAt: Date.now()
+    };
+
+    if (manifest && typeof manifest === 'object') {
+      manifestDoc.manifest = manifest;
+    }
+
+    const tmpManifest = `${manifestPath}.tmp`;
+    await writeFile(tmpManifest, JSON.stringify(manifestDoc, null, 2));
+    await rename(tmpManifest, manifestPath);
+  }
+
+  /**
+   * Delete the oldest versions of a bundle beyond `keep`, ranked by manifest
+   * createdAt (corrupt/unreadable manifests sort oldest and prune first).
+   * @returns {Promise<string[]>} pruned version names
+   */
+  async pruneOldVersions(bundleId, keep = DEFAULT_KEEP_VERSIONS) {
+    const safeBundleId = toSafeId(bundleId);
+    const bundleDir = join(this.#baseDir, safeBundleId);
+    if (!safeBundleId || !existsSync(bundleDir)) return [];
+
+    const entries = await readdir(bundleDir, { withFileTypes: true });
+    const versions = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      let createdAt = 0;
+      try {
+        const manifest = JSON.parse(
+          await readFile(join(bundleDir, entry.name, 'manifest.json'), 'utf-8')
+        );
+        createdAt = manifest.createdAt || 0;
+      } catch { /* unreadable manifest sorts oldest, pruned first */ }
+      versions.push({ version: entry.name, createdAt });
+    }
+
+    if (versions.length <= keep) return [];
+    versions.sort((a, b) => b.createdAt - a.createdAt);
+    const pruned = [];
+    for (const { version } of versions.slice(keep)) {
+      await rm(join(bundleDir, version), { recursive: true, force: true });
+      pruned.push(version);
+    }
+    return pruned;
   }
 
   async getBundle(bundleId, version) {

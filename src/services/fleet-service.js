@@ -27,8 +27,9 @@ const API_KEY = clusterConfig.apiKey || '';
 const ADMIN_TOKEN = process.env.LATTICESPARK_ADMIN_TOKEN || API_KEY;
 const SOCKET_TIMEOUT_MS = parseInt(process.env.FLEET_SOCKET_TIMEOUT_MS || '10000', 10);
 const RELAY_TIMEOUT_MS = parseInt(process.env.FLEET_RELAY_TIMEOUT_MS || '8000', 10);
+const MAX_FIRMWARE_JOBS_PER_NODE = 20;
 
-const service = new BaseService('fleet-service', { port: PORT, host: '0.0.0.0', expressOptions: { limit: '100mb' } });
+const service = new BaseService('fleet-service', { port: PORT, host: '0.0.0.0', expressOptions: { limit: '1mb' } });
 const { app, httpServer } = service;
 const io = new Server(httpServer, {
   transports: ['websocket'],
@@ -80,6 +81,35 @@ async function postToSensorService(path, body) {
     apiKey: API_KEY,
     timeoutMs: RELAY_TIMEOUT_MS
   });
+}
+
+// Bundle uploads: raw archive bodies stream straight to disk (metadata in
+// X-Bundle-* headers); legacy JSON/zipBase64 stays available under the 1mb
+// global express.json limit.
+const MAX_BUNDLE_BYTES = 100 * 1024 * 1024;
+const FIRMWARE_MANIFEST_FIELDS = ['bundleId', 'version', 'boardProfile', 'mcu', 'programmer', 'baud', 'checksum', 'signature'];
+
+function isRawBundleUpload(req) {
+  return Boolean(req.is(['application/zip', 'application/octet-stream']));
+}
+
+function decodeJsonHeader(value, name) {
+  if (!value) return null;
+  try {
+    return JSON.parse(Buffer.from(value, 'base64').toString('utf-8'));
+  } catch {
+    throw new Error(`Invalid ${name} header (expected base64-encoded JSON)`);
+  }
+}
+
+function rejectOversizedUpload(req, res) {
+  const length = Number(req.get('content-length'));
+  if (Number.isFinite(length) && length > MAX_BUNDLE_BYTES) {
+    res.status(413).json({ error: `Bundle exceeds ${MAX_BUNDLE_BYTES} byte limit` });
+    req.resume();
+    return true;
+  }
+  return false;
 }
 
 function getOrCreateFirmwareJobMap(nodeId) {
@@ -139,6 +169,19 @@ function setFirmwareJob(nodeId, jobPatch) {
   const existing = jobs.get(jobPatch.jobId) || {};
   const job = { ...existing, ...jobPatch };
   jobs.set(jobPatch.jobId, job);
+  // Cap per-node job history — evict oldest (jobs each hold up to 500 log
+  // lines and were never deleted)
+  while (jobs.size > MAX_FIRMWARE_JOBS_PER_NODE) {
+    let oldestId = null;
+    let oldestTs = Infinity;
+    for (const [id, j] of jobs) {
+      if (id === jobPatch.jobId) continue; // never evict the job just written
+      const ts = j.createdAt || j.startedAt || 0;
+      if (ts < oldestTs) { oldestTs = ts; oldestId = id; }
+    }
+    if (!oldestId) break;
+    jobs.delete(oldestId);
+  }
   return job;
 }
 
@@ -260,6 +303,8 @@ io.on('connection', (socket) => {
 
   socket.on('spoke:firmware-status', (payload) => {
     if (!nodeId || !payload?.jobId) return;
+    // Only hub-initiated jobs occupy memory (mirror the firmware-log guard)
+    if (!getFirmwareJob(nodeId, payload.jobId)) return;
     setFirmwareJob(nodeId, {
       jobId: payload.jobId,
       nodeId,
@@ -356,10 +401,27 @@ app.post('/api/spokes/:nodeId/modules/:moduleId/:action', async (req, res) => {
 
 app.post('/api/module-bundles', ensureAdmin, async (req, res) => {
   try {
-    const saved = await moduleBundleStore.saveBundle(req.body || {});
+    let saved;
+    if (isRawBundleUpload(req)) {
+      if (rejectOversizedUpload(req, res)) return;
+      saved = await moduleBundleStore.saveBundleFromStream({
+        bundleId: req.get('x-bundle-id'),
+        version: req.get('x-bundle-version'),
+        archiveChecksum: req.get('x-archive-checksum') || null,
+        signature: req.get('x-bundle-signature') || null,
+        metadata: decodeJsonHeader(req.get('x-bundle-metadata'), 'X-Bundle-Metadata') || {},
+        manifest: decodeJsonHeader(req.get('x-bundle-manifest'), 'X-Bundle-Manifest'),
+        stream: req,
+        maxBytes: MAX_BUNDLE_BYTES
+      });
+    } else {
+      saved = await moduleBundleStore.saveBundle(req.body || {});
+    }
     res.json({ success: true, bundle: saved });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    if (!res.headersSent) {
+      res.status(err.code === 'BUNDLE_TOO_LARGE' ? 413 : 400).json({ error: err.message });
+    }
   }
 });
 
@@ -405,28 +467,48 @@ app.post('/api/spokes/:nodeId/modules/deploy', ensureAdmin, async (req, res) => 
 
 app.post('/api/firmware/bundles', ensureAdmin, async (req, res) => {
   try {
-    const payload = req.body || {};
-    const manifest = payload.manifest || {};
-    const required = ['bundleId', 'version', 'boardProfile', 'mcu', 'programmer', 'baud', 'checksum', 'signature'];
-    for (const key of required) {
+    const raw = isRawBundleUpload(req);
+    const manifest = raw
+      ? (decodeJsonHeader(req.get('x-bundle-manifest'), 'X-Bundle-Manifest') || {})
+      : ((req.body || {}).manifest || {});
+    for (const key of FIRMWARE_MANIFEST_FIELDS) {
       if (!manifest[key]) {
+        if (raw) req.resume(); // drain body so the 400 reaches the client
         res.status(400).json({ error: `manifest.${key} is required` });
         return;
       }
     }
 
-    const saved = await firmwareBundleStore.saveBundle({
-      bundleId: manifest.bundleId,
-      version: manifest.version,
-      zipBase64: payload.zipBase64,
-      archiveChecksum: payload.archiveChecksum,
-      signature: manifest.signature,
-      metadata: payload.metadata || {},
-      manifest
-    });
+    let saved;
+    if (raw) {
+      if (rejectOversizedUpload(req, res)) return;
+      saved = await firmwareBundleStore.saveBundleFromStream({
+        bundleId: manifest.bundleId,
+        version: manifest.version,
+        archiveChecksum: req.get('x-archive-checksum') || null,
+        signature: manifest.signature,
+        metadata: decodeJsonHeader(req.get('x-bundle-metadata'), 'X-Bundle-Metadata') || {},
+        manifest,
+        stream: req,
+        maxBytes: MAX_BUNDLE_BYTES
+      });
+    } else {
+      const payload = req.body || {};
+      saved = await firmwareBundleStore.saveBundle({
+        bundleId: manifest.bundleId,
+        version: manifest.version,
+        zipBase64: payload.zipBase64,
+        archiveChecksum: payload.archiveChecksum,
+        signature: manifest.signature,
+        metadata: payload.metadata || {},
+        manifest
+      });
+    }
     res.json({ success: true, bundle: saved });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    if (!res.headersSent) {
+      res.status(err.code === 'BUNDLE_TOO_LARGE' ? 413 : 400).json({ error: err.message });
+    }
   }
 });
 
@@ -499,11 +581,22 @@ app.post('/api/spokes/:nodeId/firmware/rollback', ensureAdmin, async (req, res) 
   const nodeId = normalizeNodeId(req.params.nodeId);
   const { sourceId } = req.body || {};
   try {
+    // Register the job before emitting so the spoke:firmware-status guard
+    // accepts the spoke's updates for it
+    const jobId = crypto.randomUUID();
+    setFirmwareJob(nodeId, {
+      jobId,
+      nodeId,
+      sourceId: sourceId || null,
+      status: 'queued',
+      createdAt: Date.now(),
+      logs: []
+    });
     const result = await emitToSpoke(nodeId, 'hub:firmware-rollback', {
-      jobId: crypto.randomUUID(),
+      jobId,
       sourceId: sourceId || null
     }, 120000);
-    res.json({ success: true, result });
+    res.json({ success: true, jobId, result });
   } catch (err) {
     res.status(503).json({ error: err.message });
   }

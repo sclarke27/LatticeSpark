@@ -140,6 +140,12 @@ Endpoints:
 - `GET /api/spokes/:nodeId/firmware/jobs/:jobId`
 - `POST /api/spokes/:nodeId/firmware/rollback`
 
+Bundle uploads (`POST /api/module-bundles`, `POST /api/firmware/bundles`) accept either
+`Content-Type: application/zip` (raw archive body streamed to disk; metadata in
+`X-Bundle-Id` / `X-Bundle-Version` / `X-Archive-Checksum` / `X-Bundle-Signature` /
+`X-Bundle-Manifest` (base64 JSON) headers) or legacy `application/json` with `zipBase64`
+(max 1mb body).
+
 ### Spoke Agent Service
 
 Spoke-side process that:

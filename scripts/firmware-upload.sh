@@ -34,34 +34,29 @@ ZIP_PATH="${ZIP_PATH:-${2:-}}"
 [[ -f "$MANIFEST_PATH" ]] || die "manifest not found: $MANIFEST_PATH"
 [[ -f "$ZIP_PATH" ]] || die "zip not found: $ZIP_PATH"
 
-PAYLOAD_FILE="$(mktemp)"
 RESPONSE_FILE="$(mktemp)"
-trap 'rm -f "$PAYLOAD_FILE" "$RESPONSE_FILE"' EXIT
+trap 'rm -f "$RESPONSE_FILE"' EXIT
 
-python3 - "$MANIFEST_PATH" "$ZIP_PATH" "$PAYLOAD_FILE" <<'PY'
-import base64
-import hashlib
-import json
-import pathlib
-import sys
-
-manifest_path = pathlib.Path(sys.argv[1])
-zip_path = pathlib.Path(sys.argv[2])
-payload_path = pathlib.Path(sys.argv[3])
-
-manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-zip_bytes = zip_path.read_bytes()
-
-payload = {
-    "manifest": manifest,
-    "archiveChecksum": hashlib.sha256(zip_bytes).hexdigest(),
-    "zipBase64": base64.b64encode(zip_bytes).decode("ascii"),
-}
-payload_path.write_text(json.dumps(payload), encoding="utf-8")
-PY
+# Raw binary upload: the archive streams straight to disk on the hub instead
+# of being buffered as a base64 JSON body. Manifest travels as a header.
+ARCHIVE_CHECKSUM="$(sha256_file "$ZIP_PATH")"
+MANIFEST_B64="$(python3 -c 'import base64,sys;print(base64.b64encode(open(sys.argv[1],"rb").read()).decode("ascii"))' "$MANIFEST_PATH")"
 
 URL="${HUB_URL%/}/api/firmware/bundles"
-HTTP_CODE="$(curl_json "POST" "$URL" "$PAYLOAD_FILE" "$RESPONSE_FILE")"
+CURL_ARGS=(
+  -sS -X POST -w "%{http_code}" -o "$RESPONSE_FILE"
+  -H "Content-Type: application/zip"
+  -H "X-Archive-Checksum: ${ARCHIVE_CHECKSUM}"
+  -H "X-Bundle-Manifest: ${MANIFEST_B64}"
+  --data-binary "@${ZIP_PATH}"
+)
+if [[ -n "${API_KEY:-}" ]]; then
+  CURL_ARGS+=(-H "X-API-Key: ${API_KEY}")
+fi
+if [[ -n "${ADMIN_TOKEN:-}" ]]; then
+  CURL_ARGS+=(-H "X-Admin-Token: ${ADMIN_TOKEN}")
+fi
+HTTP_CODE="$(curl "${CURL_ARGS[@]}" "$URL")"
 api_expect_ok "$HTTP_CODE" "$RESPONSE_FILE"
 
 BUNDLE_ID="$(json_extract "$MANIFEST_PATH" "bundleId")"
