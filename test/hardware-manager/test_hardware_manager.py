@@ -806,3 +806,181 @@ class TestGetDriver:
         # Act & Assert
         with pytest.raises(ValueError, match="temp_sensor"):
             manager._get_driver('nonexistent')
+
+
+# ===========================================================================
+# Dispatch coalescing tests (backpressure)
+# ===========================================================================
+
+class TestDispatchCoalescing:
+    """Test _dispatch coalesces reads and keeps sync methods inline."""
+
+    @staticmethod
+    def _read_request(rid=1, component='temp_sensor'):
+        return {
+            'jsonrpc': '2.0',
+            'id': rid,
+            'method': 'read',
+            'params': {'component_id': component}
+        }
+
+    def test_read_dispatches_and_marks_inflight(self, manager):
+        """A read submits to the pool with an arrival stamp and is tracked."""
+        # Arrange
+        manager._executor = MagicMock()
+        request = self._read_request()
+
+        # Act
+        manager._dispatch(request)
+
+        # Assert
+        assert manager._executor.submit.call_count == 1
+        args = manager._executor.submit.call_args[0]
+        assert args[0] == manager._handle_and_respond
+        assert args[1] is request
+        assert isinstance(args[2], float)
+        assert 'temp_sensor' in manager._inflight_reads
+
+    def test_second_read_gets_busy_error(self, manager):
+        """A read for an already-in-flight component gets ComponentBusy."""
+        # Arrange
+        manager._executor = MagicMock()
+        sent = []
+        with patch.object(manager, '_send_response', side_effect=sent.append):
+            # Act
+            manager._dispatch(self._read_request(rid=1))
+            manager._dispatch(self._read_request(rid=2))
+
+        # Assert - only the first read was submitted
+        assert manager._executor.submit.call_count == 1
+        assert len(sent) == 1
+        assert sent[0]['id'] == 2
+        assert sent[0]['error']['code'] == -32002
+        assert sent[0]['error']['data']['type'] == 'ComponentBusy'
+
+    def test_reads_for_different_components_both_submit(self, manager):
+        """Coalescing is per-component, not global."""
+        # Arrange
+        manager._executor = MagicMock()
+
+        # Act
+        manager._dispatch(self._read_request(rid=1, component='a'))
+        manager._dispatch(self._read_request(rid=2, component='b'))
+
+        # Assert
+        assert manager._executor.submit.call_count == 2
+
+    def test_writes_are_never_coalesced(self, manager):
+        """Two writes for the same component both submit to the pool."""
+        # Arrange
+        manager._executor = MagicMock()
+        write = {
+            'jsonrpc': '2.0', 'id': 1, 'method': 'write',
+            'params': {'component_id': 'relay', 'data': {'state': True}}
+        }
+
+        # Act
+        manager._dispatch(write)
+        manager._dispatch({**write, 'id': 2})
+
+        # Assert
+        assert manager._executor.submit.call_count == 2
+
+    def test_sync_methods_stay_inline(self, manager):
+        """ping/list run synchronously, never via the pool."""
+        # Arrange
+        manager._executor = MagicMock()
+        sent = []
+        with patch.object(manager, '_send_response', side_effect=sent.append):
+            # Act
+            manager._dispatch({'jsonrpc': '2.0', 'id': 5, 'method': 'ping'})
+
+        # Assert
+        assert manager._executor.submit.call_count == 0
+        assert sent[0]['result'] == {'status': 'ok'}
+
+    def test_read_with_null_params_does_not_crash(self, manager):
+        """A read with params: null dispatches without raising."""
+        # Arrange
+        manager._executor = MagicMock()
+
+        # Act - would raise AttributeError on a naive params.get chain
+        manager._dispatch({'jsonrpc': '2.0', 'id': 1, 'method': 'read', 'params': None})
+
+        # Assert - submitted (untracked: no component_id to coalesce on)
+        assert manager._executor.submit.call_count == 1
+
+
+# ===========================================================================
+# Stale-request handling tests
+# ===========================================================================
+
+class TestHandleAndRespondStale:
+    """Test _handle_and_respond drops stale requests and clears in-flight."""
+
+    @staticmethod
+    def _read_request(rid=1, component='temp_sensor'):
+        return {
+            'jsonrpc': '2.0',
+            'id': rid,
+            'method': 'read',
+            'params': {'component_id': component}
+        }
+
+    def test_stale_request_dropped_without_touching_hardware(self, manager):
+        """A request older than STALE_REQUEST_TIMEOUT gets a StaleRequest error."""
+        import time as _time
+        # Arrange
+        sent = []
+        arrival = _time.monotonic() - (manager.STALE_REQUEST_TIMEOUT + 1)
+        with patch.object(manager, '_send_response', side_effect=sent.append), \
+             patch.object(manager, 'handle_request') as handle:
+            # Act
+            manager._handle_and_respond(self._read_request(), arrival)
+
+        # Assert
+        handle.assert_not_called()
+        assert sent[0]['error']['code'] == -32001
+        assert sent[0]['error']['data']['type'] == 'StaleRequest'
+
+    def test_inflight_cleared_after_success(self, manager):
+        """The in-flight marker is discarded after a successful response."""
+        import time as _time
+        # Arrange
+        manager._inflight_reads.add('temp_sensor')
+        sent = []
+        with patch.object(manager, '_send_response', side_effect=sent.append), \
+             patch.object(manager, 'handle_request', return_value={'jsonrpc': '2.0', 'id': 1, 'result': {}}):
+            # Act
+            manager._handle_and_respond(self._read_request(), _time.monotonic())
+
+        # Assert
+        assert 'temp_sensor' not in manager._inflight_reads
+        assert sent[0]['result'] == {}
+
+    def test_inflight_cleared_after_stale_drop(self, manager):
+        """The in-flight marker is discarded even when the request is dropped."""
+        import time as _time
+        # Arrange
+        manager._inflight_reads.add('temp_sensor')
+        arrival = _time.monotonic() - (manager.STALE_REQUEST_TIMEOUT + 1)
+        with patch.object(manager, '_send_response'):
+            # Act
+            manager._handle_and_respond(self._read_request(), arrival)
+
+        # Assert
+        assert 'temp_sensor' not in manager._inflight_reads
+
+    def test_error_responses_still_clear_inflight(self, manager):
+        """A read that errors in handle_request still clears the marker."""
+        import time as _time
+        # Arrange - unregistered component makes handle_request build an error
+        manager._inflight_reads.add('ghost')
+        sent = []
+        with patch.object(manager, '_send_response', side_effect=sent.append):
+            # Act
+            manager._handle_and_respond(self._read_request(component='ghost'), _time.monotonic())
+
+        # Assert
+        assert 'ghost' not in manager._inflight_reads
+        assert 'error' in sent[0]

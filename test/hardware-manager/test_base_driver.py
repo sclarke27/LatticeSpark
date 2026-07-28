@@ -282,3 +282,44 @@ class TestBaseDriverBusLock:
         # Act & Assert - should not raise
         with driver._with_i2c_lock():
             pass  # Should execute without error
+
+    def test_with_i2c_lock_raises_on_timeout(self):
+        """Test _with_i2c_lock raises RuntimeError when the bus is held."""
+        # Arrange - threading.Lock is non-reentrant, so a same-thread second
+        # acquire simply times out (no helper thread needed)
+        driver = ConcreteDriver('test_component', {})
+        lock = threading.Lock()
+        driver.set_bus_lock(lock)
+        driver.I2C_LOCK_TIMEOUT = 0.05
+        lock.acquire()
+
+        # Act & Assert
+        with pytest.raises(RuntimeError, match="I2C bus lock timeout"):
+            with driver._with_i2c_lock():
+                pass
+
+        # The driver must NOT release a lock it never acquired
+        assert lock.locked()
+        lock.release()
+
+    def test_with_i2c_lock_recovers_after_release(self):
+        """Test _with_i2c_lock works normally once the wedged holder releases."""
+        # Arrange
+        driver = ConcreteDriver('test_component', {})
+        lock = threading.Lock()
+        driver.set_bus_lock(lock)
+        driver.I2C_LOCK_TIMEOUT = 0.05
+        lock.acquire()
+        with pytest.raises(RuntimeError, match="I2C bus lock timeout"):
+            with driver._with_i2c_lock():
+                pass
+        lock.release()
+
+        # Act & Assert - no poisoned state
+        with driver._with_i2c_lock():
+            assert lock.locked()
+        assert not lock.locked()
+
+    def test_i2c_lock_timeout_default(self):
+        """Test the class-level default timeout is 2.0 seconds."""
+        assert BaseDriver.I2C_LOCK_TIMEOUT == 2.0

@@ -28,6 +28,7 @@ import signal
 import atexit
 import importlib
 import threading
+import time
 import concurrent.futures
 from typing import Dict, Any, Optional, Type
 from pathlib import Path
@@ -63,6 +64,10 @@ class HardwareManager:
     - Type 'AHT10' -> module 'aht10_driver' -> class 'AHT10Driver'
     """
 
+    # Seconds - matches the JS client request timeout; requests older than
+    # this when dequeued are dropped (the caller already gave up)
+    STALE_REQUEST_TIMEOUT: float = 10.0
+
     def __init__(self) -> None:
         """Initialize hardware manager."""
         # Setup logging to stderr (stdout reserved for JSON-RPC)
@@ -91,6 +96,11 @@ class HardwareManager:
         # Registry lock (protects components dict during register/cleanup)
         self._registry_lock = threading.Lock()
 
+        # In-flight read coalescing: component_ids with a read queued or
+        # executing (bounds the executor queue under slow-sensor backlog)
+        self._inflight_reads: set = set()
+        self._inflight_lock = threading.Lock()
+
         # Global I2C bus lock (prevents concurrent I2C ops from colliding)
         self._i2c_bus_lock = threading.Lock()
 
@@ -110,6 +120,24 @@ class HardwareManager:
         """
         with self._stdout_lock:
             print(json.dumps(response), flush=True)
+
+    def _error_response(
+        self,
+        request_id: Any,
+        code: int,
+        message: str,
+        error_type: str
+    ) -> Dict[str, Any]:
+        """Build a JSON-RPC error response."""
+        return {
+            'jsonrpc': '2.0',
+            'id': request_id,
+            'error': {
+                'code': code,
+                'message': message,
+                'data': {'type': error_type}
+            }
+        }
 
     def _load_driver(self, component_type: str) -> Type[BaseDriver]:
         """
@@ -499,15 +527,86 @@ class HardwareManager:
 
         return response
 
-    def _handle_and_respond(self, request: Dict[str, Any]) -> None:
+    def _handle_and_respond(self, request: Dict[str, Any], arrival: float) -> None:
         """
         Handle a request and send response (runs in thread pool).
 
+        Requests that waited longer than STALE_REQUEST_TIMEOUT in the queue
+        are dropped with an error - the JS client has already timed out, so
+        executing them wastes hardware I/O and perpetuates backlog.
+
         Args:
             request: JSON-RPC request object
+            arrival: time.monotonic() timestamp when the request was dispatched
         """
-        response = self.handle_request(request)
-        self._send_response(response)
+        params = request.get('params')
+        component_id = params.get('component_id') if isinstance(params, dict) else None
+        try:
+            age = time.monotonic() - arrival
+            if age > self.STALE_REQUEST_TIMEOUT:
+                self.logger.warning(
+                    f"Dropping stale {request.get('method')} for {component_id} "
+                    f"(queued {age:.1f}s)"
+                )
+                self._send_response(self._error_response(
+                    request.get('id'),
+                    -32001,
+                    f"Stale request dropped after {age:.1f}s in queue",
+                    'StaleRequest'
+                ))
+                return
+            response = self.handle_request(request)
+            self._send_response(response)
+        finally:
+            if request.get('method') == 'read' and component_id is not None:
+                with self._inflight_lock:
+                    self._inflight_reads.discard(component_id)
+
+    def _dispatch(self, request: Dict[str, Any]) -> None:
+        """
+        Route a parsed JSON-RPC request.
+
+        Register/initialize/cleanup/list/get_info/ping run synchronously
+        (they modify shared state and happen at startup/shutdown). Reads
+        coalesce: a read for a component that already has one queued or
+        executing is answered with an immediate busy error instead of
+        growing the pool queue without bound. Writes are user/module
+        commands and are never coalesced.
+        """
+        method = request.get('method')
+
+        if method in ('register', 'initialize', 'cleanup', 'list',
+                      'get_info', 'ping'):
+            response = self.handle_request(request)
+            self._send_response(response)
+            return
+
+        arrival = time.monotonic()
+
+        if method == 'read':
+            params = request.get('params')
+            component_id = params.get('component_id') if isinstance(params, dict) else None
+            if component_id is not None:
+                busy = False
+                with self._inflight_lock:
+                    if component_id in self._inflight_reads:
+                        busy = True
+                    else:
+                        self._inflight_reads.add(component_id)
+                if busy:
+                    # Never send while holding _inflight_lock - stdout can
+                    # block on pipe backpressure
+                    self._send_response(self._error_response(
+                        request.get('id'),
+                        -32002,
+                        f"Read already in flight for {component_id}",
+                        'ComponentBusy'
+                    ))
+                    return
+
+        # write and unknown methods go to the pool as before; handle_request
+        # produces the unknown-method error response
+        self._executor.submit(self._handle_and_respond, request, arrival)
 
     def run(self) -> None:
         """
@@ -548,18 +647,7 @@ class HardwareManager:
                 try:
                     # Parse JSON-RPC request
                     request = json.loads(line)
-
-                    method = request.get('method')
-
-                    # Register/initialize/cleanup run synchronously
-                    # (they modify shared state and happen at startup/shutdown)
-                    if method in ('register', 'initialize', 'cleanup', 'list',
-                                  'get_info', 'ping'):
-                        response = self.handle_request(request)
-                        self._send_response(response)
-                    else:
-                        # Read/write dispatched to thread pool for concurrency
-                        self._executor.submit(self._handle_and_respond, request)
+                    self._dispatch(request)
 
                 except json.JSONDecodeError as e:
                     self.logger.error(f"Invalid JSON: {e}")

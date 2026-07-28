@@ -153,7 +153,8 @@ async function flushQueue() {
       });
       queue.ack(ack);
     }
-    await queue.compact();
+    // No per-flush compact — the 30s queueCompactTimer owns compaction and
+    // ack-state persistence; shutdown() still does a final queue.flush().
   } finally {
     flushInProgress = false;
   }

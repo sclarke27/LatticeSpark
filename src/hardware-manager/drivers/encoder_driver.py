@@ -212,9 +212,11 @@ class EncoderDriver(BaseDriver):
                 time.sleep(self.POLL_INTERVAL)
 
             except Exception as e:
-                # Back off on I2C errors, don't crash the thread
+                # Back off on I2C errors, don't crash the thread. Heartbeat is
+                # deliberately NOT refreshed here: a persistently failing poll
+                # (e.g. wedged bus) must surface via the stale-heartbeat check
+                # in read() instead of silently serving frozen position data.
                 self.logger.debug(f"Encoder poll I2C error: {e}")
-                self._thread_last_heartbeat = time.time()
                 time.sleep(0.01)
 
     def read(self) -> Dict[str, Any]:

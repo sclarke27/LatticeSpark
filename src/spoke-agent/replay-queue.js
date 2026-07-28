@@ -10,6 +10,9 @@ function parseJsonLine(line) {
   }
 }
 
+// Rewrite the queue file only once at least this many dead rows accumulate
+const COMPACT_MIN_DEAD_ROWS = 64;
+
 export class ReplayQueue {
   #queuePath;
   #statePath;
@@ -21,6 +24,9 @@ export class ReplayQueue {
   #ackedSeq;
   #ioChain;
   #dirty;
+  #fileRows;
+  #fileBytes;
+  #persistedAckedSeq;
 
   constructor({ queuePath, retentionHours = 72, maxDiskMb = 1024, maxItems = 10000 }) {
     this.#queuePath = queuePath;
@@ -33,12 +39,19 @@ export class ReplayQueue {
     this.#ackedSeq = 0;
     this.#ioChain = Promise.resolve();
     this.#dirty = false;
+    this.#fileRows = 0;
+    this.#fileBytes = 0;
+    this.#persistedAckedSeq = 0;
   }
 
   async initialize() {
     await mkdir(dirname(this.#queuePath), { recursive: true });
     await this.#loadState();
+    this.#persistedAckedSeq = this.#ackedSeq;
     await this.#loadQueue();
+    // Never reuse seqs at/below the persisted ack — reused seqs are
+    // un-ackable and dropped on the next reload (data loss).
+    this.#nextSeq = Math.max(this.#nextSeq, this.#ackedSeq + 1);
     await this.compact();
   }
 
@@ -75,6 +88,11 @@ export class ReplayQueue {
     if (this.#items.length > this.#maxItems) {
       this.#items = this.#items.slice(-this.#maxItems);
     }
+
+    this.#fileRows = lines.length;
+    this.#fileBytes = Buffer.byteLength(raw);
+    // Dead rows found on disk — let the startup compact() decide on a rewrite
+    if (this.#fileRows !== this.#items.length) this.#dirty = true;
   }
 
   enqueue(batch) {
@@ -133,8 +151,10 @@ export class ReplayQueue {
 
   async append(item) {
     return this.#runIoLocked(async () => {
-      await mkdir(dirname(this.#queuePath), { recursive: true });
-      await appendFile(this.#queuePath, `${JSON.stringify(item)}\n`);
+      const line = `${JSON.stringify(item)}\n`;
+      await appendFile(this.#queuePath, line);
+      this.#fileRows += 1;
+      this.#fileBytes += Buffer.byteLength(line);
     });
   }
 
@@ -146,31 +166,44 @@ export class ReplayQueue {
       if (this.#items.length !== before) {
         this.#dirty = true;
       }
-      if (!this.#dirty) return;
-      await this.#flushUnlocked();
-      this.#dirty = false;
+      if (this.#dirty && this.#shouldRewrite()) {
+        await this.#flushUnlocked();
+        return;
+      }
+      // Cheap ~60B atomic write, only when acks advanced since last persist
+      if (this.#ackedSeq !== this.#persistedAckedSeq) {
+        await this.#persistState();
+      }
     });
   }
 
+  // Rewrite only when the file is mostly dead rows (acked/expired/overflow-
+  // dropped) or has outgrown the disk cap. Row counts proxy for bytes.
+  #shouldRewrite() {
+    const deadRows = this.#fileRows - this.#items.length;
+    return (deadRows >= COMPACT_MIN_DEAD_ROWS && deadRows > this.#items.length)
+      || this.#fileBytes > this.#maxBytes;
+  }
+
   async #persistState() {
-    await mkdir(dirname(this.#statePath), { recursive: true });
+    const ackedSeq = this.#ackedSeq;
     const tmpPath = `${this.#statePath}.${process.pid}.${Date.now()}.tmp`;
-    const payload = JSON.stringify({ ackedSeq: this.#ackedSeq, updatedAt: Date.now() }, null, 2);
+    const payload = JSON.stringify({ ackedSeq, updatedAt: Date.now() }, null, 2);
     await writeFile(tmpPath, payload);
     await rename(tmpPath, this.#statePath);
+    this.#persistedAckedSeq = ackedSeq;
   }
 
   async #flushUnlocked() {
-    await mkdir(dirname(this.#queuePath), { recursive: true });
-    if (this.#items.length === 0) {
-      await writeFile(this.#queuePath, '');
-      await this.#persistState();
-      return;
-    }
-    const body = `${this.#items.map(item => JSON.stringify(item)).join('\n')}\n`;
+    // Capture before the await — a concurrent enqueue must not skew counters
+    const rows = this.#items.length;
+    const body = rows === 0 ? '' : `${this.#items.map(item => JSON.stringify(item)).join('\n')}\n`;
     await writeFile(this.#queuePath, body);
+    this.#fileRows = rows;
+    this.#fileBytes = Buffer.byteLength(body);
+    this.#dirty = false;
     await this.#persistState();
-    await this.#enforceDiskCap();
+    if (rows > 0) await this.#enforceDiskCap();
   }
 
   #runIoLocked(task) {
@@ -186,6 +219,7 @@ export class ReplayQueue {
     } catch {
       return;
     }
+    this.#fileBytes = currentSize; // self-heal tracked-byte drift
     if (currentSize <= this.#maxBytes || this.#items.length === 0) return;
 
     // Estimate target item count to fit under cap, then drop in bulk
@@ -193,8 +227,11 @@ export class ReplayQueue {
     const targetItems = Math.max(1, Math.floor(this.#maxBytes / avgItemSize));
     if (targetItems < this.#items.length) {
       this.#items = this.#items.slice(-targetItems);
+      const rows = this.#items.length;
       const body = `${this.#items.map(item => JSON.stringify(item)).join('\n')}\n`;
       await writeFile(this.#queuePath, body);
+      this.#fileRows = rows;
+      this.#fileBytes = Buffer.byteLength(body);
     }
   }
 }

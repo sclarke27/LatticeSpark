@@ -37,6 +37,12 @@ class BaseDriver(ABC):
     # Minimum time between reads (seconds). Override in subclass.
     MIN_READ_INTERVAL: float = 0.05
 
+    # Max time to wait for the shared I2C bus lock (seconds).
+    # Bounded so one wedged I2C transaction fails other drivers fast
+    # (tripping their own JS circuit breakers) instead of pinning
+    # thread-pool workers indefinitely. Override in subclass if needed.
+    I2C_LOCK_TIMEOUT: float = 2.0
+
     def __init__(self, component_id: str, config: Dict[str, Any]) -> None:
         """
         Initialize base driver.
@@ -115,10 +121,25 @@ class BaseDriver(ABC):
 
     @contextmanager
     def _with_i2c_lock(self):
-        """Context manager that acquires the I2C bus lock if set."""
+        """
+        Context manager that acquires the I2C bus lock if set.
+
+        Raises:
+            RuntimeError: If the bus lock cannot be acquired within
+                I2C_LOCK_TIMEOUT seconds (another driver is holding or
+                has wedged the bus)
+        """
         if self._i2c_bus_lock:
-            with self._i2c_bus_lock:
+            acquired = self._i2c_bus_lock.acquire(timeout=self.I2C_LOCK_TIMEOUT)
+            if not acquired:
+                raise RuntimeError(
+                    f"I2C bus lock timeout after {self.I2C_LOCK_TIMEOUT}s "
+                    f"for {self.component_id}"
+                )
+            try:
                 yield
+            finally:
+                self._i2c_bus_lock.release()
         else:
             yield
 

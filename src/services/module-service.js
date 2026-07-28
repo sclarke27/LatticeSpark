@@ -7,6 +7,7 @@ import { ModuleContext } from '../modules/module-context.js';
 import { discoverModules, validateComponentRefs, loadModuleClass } from '../modules/module-loader.js';
 import { loadClusterConfig } from '../cluster/cluster-config.js';
 import { withTimeout } from '../utils/timeout.js';
+import { createOpChain } from '../utils/op-chain.js';
 import { atomicWriteJson } from '../utils/persistence.js';
 import { CircuitBreaker } from '../utils/circuit-breaker.js';
 import { requireApiKey as createApiKeyMiddleware } from '../utils/auth.js';
@@ -49,7 +50,18 @@ const modules = new Map();
  * @property {string|null} lastError
  * @property {number} breakerTrips - consecutive circuit breaker trips (for backoff)
  * @property {NodeJS.Timeout|null} restartTimer - pending auto-restart timer
+ * @property {Function} enqueueOp - per-entry lifecycle serializer.
+ *   INVARIANT: functions passed to enqueueOp must never call enqueueOp on the
+ *   same entry (deadlock)
+ * @property {boolean} inFlight - a module method (execute/onSensorChange) is
+ *   currently awaiting
+ * @property {Map<string, Object>} pendingChanges - coalesced sensor events,
+ *   latest per componentId, delivered when the in-flight call settles
  */
+
+// Serializes concurrent rescans (per-entry chains cannot prevent two rescans
+// from double-creating an entry for the same new module)
+const enqueueRescan = createOpChain();
 
 // ── Shared State ────────────────────────────────────────────────────────────
 
@@ -122,15 +134,15 @@ function connectToSensorService() {
 
     sensorSocket.on('connect', () => {
       log.info('Connected to sensor-service');
-      // Resume paused module intervals on reconnect
+      // Resume paused module intervals on reconnect — queued per entry so the
+      // resume serializes with any in-progress stop/start
       for (const entry of modules.values()) {
-        if (entry.status === 'running' && !entry.intervalId && entry.config.triggers.interval) {
-          entry.intervalId = setInterval(
-            () => safeCall(entry, 'execute'),
-            entry.config.triggers.interval
-          );
-          log.info({ moduleId: entry.id }, 'Resumed interval');
-        }
+        entry.enqueueOp(() => {
+          if (entry.status === 'running' && !entry.intervalId && entry.config.triggers.interval) {
+            startEntryInterval(entry);
+            log.info({ moduleId: entry.id }, 'Resumed interval');
+          }
+        }).catch(err => log.error({ moduleId: entry.id, err }, 'Interval resume failed'));
       }
     });
 
@@ -194,19 +206,35 @@ function handleSensorBatch(batch) {
       const newCopy = { ...newData };
       const prevCopy = prevData ? { ...prevData } : null;
 
-      // Notify context subscribers
+      // Notify context subscribers (always — subscribers see every event)
       entry.context._notifyData(componentId, newCopy);
 
-      // Call module's onSensorChange
-      safeCall(entry, 'onSensorChange', componentId, newCopy, prevCopy);
+      // Call module's onSensorChange, coalescing while a call is in flight
+      // (latest event per component wins; delivered when the call settles)
+      if (entry.inFlight) {
+        entry.pendingChanges.set(componentId, { newData: newCopy, prevData: prevCopy });
+      } else {
+        safeCall(entry, 'onSensorChange', componentId, newCopy, prevCopy);
+      }
     }
   }
 }
 
 // ── Module Lifecycle ────────────────────────────────────────────────────────
 
+// (Re)arm an entry's interval trigger, never leaking a previous interval.
+// Ticks are skipped while a previous execute/onSensorChange is still pending.
+function startEntryInterval(entry) {
+  if (entry.intervalId) clearInterval(entry.intervalId);
+  entry.intervalId = setInterval(() => {
+    if (entry.inFlight) return;
+    safeCall(entry, 'execute');
+  }, entry.config.triggers.interval);
+}
+
 async function startModule(entry) {
   if (entry.status === 'running') return;
+  if (entry.config.enabled === false) return; // disabled while queued for start
 
   try {
     const ModuleClass = await loadModuleClass(entry.id, entry.dir);
@@ -225,6 +253,10 @@ async function startModule(entry) {
     entry.context = context;
     entry.consecutiveErrors = 0;
     entry.lastError = null;
+    // Fresh instance starts with a fresh latch — a hung old-instance call
+    // must not starve the restarted instance
+    entry.inFlight = false;
+    entry.pendingChanges.clear();
 
     // Validate component refs (warnings only — don't block startup)
     const warnings = validateComponentRefs(entry.config, components);
@@ -234,10 +266,7 @@ async function startModule(entry) {
 
     // Start interval trigger
     if (entry.config.triggers.interval) {
-      entry.intervalId = setInterval(
-        () => safeCall(entry, 'execute'),
-        entry.config.triggers.interval
-      );
+      startEntryInterval(entry);
     }
 
     entry.status = 'running';
@@ -267,6 +296,9 @@ async function stopModule(entry) {
     entry.intervalId = null;
   }
 
+  // Drop stale coalesced events for the departing instance
+  entry.pendingChanges.clear();
+
   // Call cleanup with timeout
   if (entry.instance) {
     try {
@@ -290,58 +322,88 @@ async function stopModule(entry) {
 /**
  * Safely call a method on a module instance with error tracking.
  * Circuit breaker covers both execute() and onSensorChange().
+ *
+ * The in-flight latch wraps ONLY the method await; breaker handling runs
+ * after the latch clears so stopModule (which never waits for in-flight
+ * calls) cannot deadlock against this function.
  */
 async function safeCall(entry, method, ...args) {
   if (!entry.instance || typeof entry.instance[method] !== 'function') return;
 
+  entry.inFlight = true;
+  let callErr = null;
   try {
     await entry.instance[method](...args);
     entry.consecutiveErrors = 0;
   } catch (err) {
-    entry.lastError = err.message;
-    entry.consecutiveErrors++;
-    log.error({ moduleId: entry.id, method, err }, 'Module method error');
-
-    if (entry.consecutiveErrors >= BREAKER_THRESHOLD) {
-      entry.breakerTrips++;
-
-      if (entry.breakerTrips > BREAKER_MAX_RETRIES) {
-        log.error({ moduleId: entry.id, maxRetries: BREAKER_MAX_RETRIES }, 'Circuit breaker: permanently disabling module');
-        await disableModule(entry.id);
-        return;
-      }
-
-      const delay = Math.min(
-        BREAKER_BASE_DELAY * Math.pow(2, entry.breakerTrips - 1),
-        BREAKER_MAX_DELAY
-      );
-      log.error({ moduleId: entry.id, delaySec: delay / 1000, attempt: entry.breakerTrips, maxRetries: BREAKER_MAX_RETRIES }, 'Circuit breaker: restarting module');
-      await stopModule(entry);
-      entry.status = 'error';
-      broadcastModuleStatus(entry);
-
-      entry.restartTimer = setTimeout(() => {
-        (async () => {
-          entry.restartTimer = null;
-          entry.consecutiveErrors = 0;
-          log.info({ moduleId: entry.id, attempt: entry.breakerTrips, maxRetries: BREAKER_MAX_RETRIES }, 'Auto-restarting module');
-          await startModule(entry);
-          broadcastFullModuleList();
-        })().catch(err => {
-          log.error({ moduleId: entry.id, err }, 'Auto-restart failed');
-        });
-      }, delay);
-    }
+    callErr = err;
+  } finally {
+    entry.inFlight = false;
   }
+
+  if (!callErr) {
+    drainPendingChange(entry);
+    return;
+  }
+
+  entry.lastError = callErr.message;
+  entry.consecutiveErrors++;
+  log.error({ moduleId: entry.id, method, err: callErr }, 'Module method error');
+
+  if (entry.consecutiveErrors < BREAKER_THRESHOLD) {
+    drainPendingChange(entry);
+    return;
+  }
+
+  entry.breakerTrips++;
+
+  if (entry.breakerTrips > BREAKER_MAX_RETRIES) {
+    log.error({ moduleId: entry.id, maxRetries: BREAKER_MAX_RETRIES }, 'Circuit breaker: permanently disabling module');
+    await disableModule(entry.id);
+    return;
+  }
+
+  const delay = Math.min(
+    BREAKER_BASE_DELAY * Math.pow(2, entry.breakerTrips - 1),
+    BREAKER_MAX_DELAY
+  );
+  log.error({ moduleId: entry.id, delaySec: delay / 1000, attempt: entry.breakerTrips, maxRetries: BREAKER_MAX_RETRIES }, 'Circuit breaker: restarting module');
+  await entry.enqueueOp(() => stopModule(entry));
+  if (entry.config.enabled === false || entry.status === 'disabled') return; // disabled while stopping
+  entry.status = 'error';
+  broadcastModuleStatus(entry);
+
+  entry.restartTimer = setTimeout(() => {
+    entry.restartTimer = null;
+    entry.consecutiveErrors = 0;
+    log.info({ moduleId: entry.id, attempt: entry.breakerTrips, maxRetries: BREAKER_MAX_RETRIES }, 'Auto-restarting module');
+    entry.enqueueOp(() => startModule(entry))
+      .then(() => broadcastFullModuleList())
+      .catch(err => {
+        log.error({ moduleId: entry.id, err }, 'Auto-restart failed');
+      });
+  }, delay);
+}
+
+// Deliver the oldest coalesced sensor event once the in-flight call settles.
+// No unbounded recursion: safeCall's re-invocation unwinds at its first await.
+function drainPendingChange(entry) {
+  if (entry.status !== 'running' || !entry.instance) return;
+  if (entry.inFlight || entry.pendingChanges.size === 0) return;
+  const [componentId, { newData, prevData }] = entry.pendingChanges.entries().next().value;
+  entry.pendingChanges.delete(componentId);
+  safeCall(entry, 'onSensorChange', componentId, newData, prevData);
 }
 
 async function enableModule(moduleId) {
   const entry = modules.get(moduleId);
   if (!entry) return { error: `Module "${moduleId}" not found` };
 
-  entry.config.enabled = true;
-  await persistConfig(entry);
-  await startModule(entry);
+  await entry.enqueueOp(async () => {
+    entry.config.enabled = true;
+    await persistConfig(entry);
+    await startModule(entry);
+  });
   broadcastFullModuleList();
   return { success: true };
 }
@@ -350,10 +412,12 @@ async function disableModule(moduleId) {
   const entry = modules.get(moduleId);
   if (!entry) return { error: `Module "${moduleId}" not found` };
 
-  await stopModule(entry);
-  entry.config.enabled = false;
-  entry.status = 'disabled';
-  await persistConfig(entry);
+  await entry.enqueueOp(async () => {
+    entry.config.enabled = false;
+    await stopModule(entry);
+    entry.status = 'disabled';
+    await persistConfig(entry);
+  });
   broadcastModuleStatus(entry);
   broadcastFullModuleList();
   log.info({ moduleId }, 'Disabled module');
@@ -364,13 +428,21 @@ async function restartModule(moduleId) {
   const entry = modules.get(moduleId);
   if (!entry) return { error: `Module "${moduleId}" not found` };
 
-  await stopModule(entry);
-  await startModule(entry);
+  await entry.enqueueOp(async () => {
+    await stopModule(entry);
+    await startModule(entry);
+  });
   broadcastFullModuleList();
   return { success: true, status: entry.status };
 }
 
-async function rescanModules() {
+// Public entry point is serialized — concurrent POST /api/modules/rescan
+// must not double-create entries for the same new module.
+function rescanModules() {
+  return enqueueRescan(doRescanModules);
+}
+
+async function doRescanModules() {
   const discovered = await discoverModules(MODULES_DIR);
   const byId = new Map(discovered.map((m) => [m.id, m]));
 
@@ -394,39 +466,46 @@ async function rescanModules() {
         consecutiveErrors: 0,
         lastError: null,
         breakerTrips: 0,
-        restartTimer: null
+        restartTimer: null,
+        enqueueOp: createOpChain(),
+        inFlight: false,
+        pendingChanges: new Map()
       };
       modules.set(found.id, entry);
       added++;
       if (entry.config.enabled) {
-        await startModule(entry);
+        await entry.enqueueOp(() => startModule(entry));
       }
       continue;
     }
 
-    const wasRunning = existing.status === 'running';
-    existing.dir = found.dir;
-    existing.config = found.config;
     updated++;
+    // Mutations + branch logic run inside the op (wasRunning computed there)
+    // so they cannot interleave with breaker restarts or REST lifecycle calls
+    await existing.enqueueOp(async () => {
+      const wasRunning = existing.status === 'running';
+      existing.dir = found.dir;
+      existing.config = found.config;
 
-    if (!found.config.enabled && wasRunning) {
-      await stopModule(existing);
-      existing.status = 'disabled';
-    } else if (found.config.enabled && wasRunning) {
-      // Reload running modules so updated code/config takes effect after deploy.
-      await stopModule(existing);
-      existing.status = 'stopped';
-      await startModule(existing);
-    } else if (found.config.enabled && !wasRunning) {
-      existing.status = 'stopped';
-      await startModule(existing);
-    }
+      if (!found.config.enabled && wasRunning) {
+        await stopModule(existing);
+        existing.status = 'disabled';
+      } else if (found.config.enabled && wasRunning) {
+        // Reload running modules so updated code/config takes effect after deploy.
+        await stopModule(existing);
+        existing.status = 'stopped';
+        await startModule(existing);
+      } else if (found.config.enabled && !wasRunning) {
+        existing.status = 'stopped';
+        await startModule(existing);
+      }
+    });
   }
 
   // Remove modules that no longer exist on disk
   for (const [moduleId, entry] of modules.entries()) {
     if (byId.has(moduleId)) continue;
-    await stopModule(entry);
+    await entry.enqueueOp(() => stopModule(entry));
     modules.delete(moduleId);
     removed++;
   }
@@ -642,7 +721,10 @@ service.initialize = async () => {
       consecutiveErrors: 0,
       lastError: null,
       breakerTrips: 0,
-      restartTimer: null
+      restartTimer: null,
+      enqueueOp: createOpChain(),
+      inFlight: false,
+      pendingChanges: new Map()
     });
   }
   log.info('Discovered %d module(s)', modules.size);
@@ -656,10 +738,11 @@ service.initialize = async () => {
   await connectToSensorService();
   log.info('Sensor-service ready (%d components)', components.length);
 
-  // 4. Start enabled modules
+  // 4. Start enabled modules (queued — the sensor socket is already
+  // connected, so a connect-resume op could otherwise race a direct call)
   const enabledModules = Array.from(modules.values()).filter(m => m.config.enabled);
   for (const entry of enabledModules) {
-    await startModule(entry);
+    await entry.enqueueOp(() => startModule(entry));
   }
 
   log.info('REST API: http://localhost:%d/api/modules', MODULE_SERVICE_PORT);
@@ -667,10 +750,10 @@ service.initialize = async () => {
 };
 
 service.onShutdown = async () => {
+  // Always enqueue: stopModule's own guard makes it a no-op when not
+  // running, and queuing ensures a pending start is followed by a stop
   for (const entry of modules.values()) {
-    if (entry.status === 'running') {
-      await stopModule(entry);
-    }
+    await entry.enqueueOp(() => stopModule(entry));
   }
   if (sensorSocket) sensorSocket.disconnect();
 };

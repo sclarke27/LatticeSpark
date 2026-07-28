@@ -139,6 +139,126 @@ describe('ReplayQueue', () => {
     await rm(`${queuePath}.state.json`, { force: true });
   });
 
+  it('compact() defers rewrite while dead rows are few but still persists ack state', async () => {
+    const queuePath = tempQueuePath('defer-rewrite');
+    const queue = new ReplayQueue({ queuePath, retentionHours: 72, maxDiskMb: 1 });
+    await queue.initialize();
+
+    const items = [];
+    for (let i = 0; i < 10; i++) {
+      const item = queue.enqueue({ sensor: { value: i } });
+      items.push(item);
+      await queue.append(item);
+    }
+    const sizeBefore = (await stat(queuePath)).size;
+
+    queue.ack(items[9].seq);
+    await queue.compact();
+
+    // 10 dead rows < COMPACT_MIN_DEAD_ROWS -> no rewrite...
+    assert.equal((await stat(queuePath)).size, sizeBefore);
+    // ...but the ack state was persisted anyway
+    const reload = new ReplayQueue({ queuePath, retentionHours: 72, maxDiskMb: 1 });
+    await reload.initialize();
+    assert.equal(reload.getAckedSeq(), items[9].seq);
+    assert.equal(reload.pending().length, 0);
+
+    await rm(queuePath, { force: true });
+    await rm(`${queuePath}.state.json`, { force: true });
+  });
+
+  it('compact() rewrites once dead rows dominate', async () => {
+    const queuePath = tempQueuePath('rewrite-dominant');
+    const queue = new ReplayQueue({ queuePath, retentionHours: 72, maxDiskMb: 1 });
+    await queue.initialize();
+
+    let last = null;
+    for (let i = 0; i < 150; i++) {
+      last = queue.enqueue({ sensor: { value: i } });
+      await queue.append(last);
+    }
+    queue.ack(last.seq);
+    await queue.compact();
+
+    // 150 dead rows >= 64 and > 0 live -> rewritten to empty
+    assert.equal((await stat(queuePath)).size, 0);
+    const reload = new ReplayQueue({ queuePath, retentionHours: 72, maxDiskMb: 1 });
+    await reload.initialize();
+    assert.equal(reload.pending().length, 0);
+
+    await rm(queuePath, { force: true });
+    await rm(`${queuePath}.state.json`, { force: true });
+  });
+
+  it('seq numbering resumes above persisted ackedSeq after reload', async () => {
+    const queuePath = tempQueuePath('seq-resume');
+    const q1 = new ReplayQueue({ queuePath, retentionHours: 72, maxDiskMb: 1 });
+    await q1.initialize();
+    const first = q1.enqueue({ temp: { value: 1 } });
+    await q1.flush();
+    q1.ack(first.seq);
+    await q1.flush();
+
+    // Regression: nextSeq used to reset from surviving rows only — a reused
+    // seq would be un-ackable and silently dropped on the next reload
+    const q2 = new ReplayQueue({ queuePath, retentionHours: 72, maxDiskMb: 1 });
+    await q2.initialize();
+    const item = q2.enqueue({ temp: { value: 2 } });
+    assert.equal(item.seq, first.seq + 1);
+    q2.ack(item.seq);
+    assert.equal(q2.pending().length, 0);
+    await q2.flush();
+
+    const q3 = new ReplayQueue({ queuePath, retentionHours: 72, maxDiskMb: 1 });
+    await q3.initialize();
+    assert.equal(q3.getAckedSeq(), item.seq);
+    assert.equal(q3.pending().length, 0);
+
+    await rm(queuePath, { force: true });
+    await rm(`${queuePath}.state.json`, { force: true });
+  });
+
+  it('compact() enforces disk cap on append-only growth', async () => {
+    const queuePath = tempQueuePath('append-cap');
+    const queue = new ReplayQueue({ queuePath, retentionHours: 72, maxDiskMb: 0.001 });
+    await queue.initialize();
+
+    for (let i = 0; i < 50; i++) {
+      const item = queue.enqueue({ sensor: { value: i, padding: 'x'.repeat(50) } });
+      await queue.append(item);
+    }
+    await queue.compact();
+
+    // Offline (append-only) growth still capped via tracked #fileBytes
+    assert.ok(queue.pendingCount() < 50, `Expected fewer than 50 items, got ${queue.pendingCount()}`);
+    const fileSize = (await stat(queuePath)).size;
+    assert.ok(fileSize <= 1024 + 200, `File ${fileSize} bytes should be near 1KB cap`);
+
+    await rm(queuePath, { force: true });
+    await rm(`${queuePath}.state.json`, { force: true });
+  });
+
+  it('crash with unpersisted acks re-loads items for re-send (no loss)', async () => {
+    const queuePath = tempQueuePath('crash-resend');
+    const q1 = new ReplayQueue({ queuePath, retentionHours: 72, maxDiskMb: 1 });
+    await q1.initialize();
+    const items = [];
+    for (let i = 0; i < 5; i++) {
+      const item = q1.enqueue({ sensor: { value: i } });
+      items.push(item);
+      await q1.append(item);
+    }
+    q1.ack(items[2].seq); // never persisted — simulates SIGKILL before compact
+
+    const q2 = new ReplayQueue({ queuePath, retentionHours: 72, maxDiskMb: 1 });
+    await q2.initialize();
+    assert.equal(q2.pending().length, 5); // re-send, not loss
+    assert.equal(q2.getAckedSeq(), 0);
+
+    await rm(queuePath, { force: true });
+    await rm(`${queuePath}.state.json`, { force: true });
+  });
+
   it('disk cap drops items in bulk', async () => {
     const queuePath = tempQueuePath('disk-cap');
     // Very small disk cap to trigger enforcement

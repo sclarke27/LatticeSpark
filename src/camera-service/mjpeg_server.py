@@ -52,6 +52,12 @@ class CameraHTTPServer(ThreadingMixIn, HTTPServer):
 class CameraHTTPHandler(BaseHTTPRequestHandler):
     """HTTP handler for MJPEG streaming, REST control, and SSE detections."""
 
+    # Socket timeout (seconds), applied by StreamRequestHandler.setup() via
+    # connection.settimeout(). A write blocked on a half-open client raises
+    # socket.timeout (an OSError) instead of hanging the handler thread and
+    # pinning a stream/SSE slot forever.
+    timeout = 30
+
     def do_GET(self):
         if self.path == '/stream':
             self._handle_stream()
@@ -152,7 +158,9 @@ class CameraHTTPHandler(BaseHTTPRequestHandler):
                     self.wfile.write(b'\r\n')
                     self.wfile.write(jpeg)
                     self.wfile.write(b'\r\n')
-                except (BrokenPipeError, ConnectionResetError):
+                except OSError:
+                    # Covers BrokenPipeError, ConnectionResetError, and
+                    # socket.timeout (half-open client hit the 30s timeout)
                     break
 
                 time.sleep(target_interval)
@@ -291,9 +299,11 @@ class CameraHTTPHandler(BaseHTTPRequestHandler):
                     try:
                         self.wfile.write(b': keepalive\n\n')
                         self.wfile.flush()
-                    except (BrokenPipeError, ConnectionResetError):
+                    except OSError:
                         break
-                except (BrokenPipeError, ConnectionResetError):
+                except OSError:
+                    # Covers BrokenPipeError, ConnectionResetError, and
+                    # socket.timeout (half-open client hit the 30s timeout)
                     break
         finally:
             cam.unsubscribe_detections(det_queue)
