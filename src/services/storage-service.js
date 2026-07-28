@@ -17,6 +17,9 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { mkdirSync, existsSync } from 'fs';
 import { BaseService } from './base-service.js';
+import { StorageBuffer } from './storage-buffer.js';
+import { deleteExpiredReadings } from './storage-retention.js';
+import { queryHistory } from './storage-history.js';
 import { requireApiKey as createApiKeyMiddleware } from '../utils/auth.js';
 import { loadClusterConfig } from '../cluster/cluster-config.js';
 import { createLogger } from '../utils/logger.js';
@@ -30,10 +33,16 @@ const __dirname = dirname(__filename);
 const PORT = process.env.STORAGE_SERVICE_PORT || 3001;
 const DB_PATH = process.env.DB_PATH || join(__dirname, '..', '..', 'data', 'sensors.db');
 const RETENTION_HOURS = parseInt(process.env.RETENTION_HOURS || '168', 10);
+const FLUSH_INTERVAL_MS = parseInt(process.env.STORAGE_FLUSH_MS || '250', 10);
+const BUFFER_MAX_ROWS = parseInt(process.env.STORAGE_BUFFER_MAX_ROWS || '20000', 10);
+const CLEANUP_CHUNK_ROWS = 10000;
 
 let db = null;
 let insertStmt = null;
 let insertMany = null;
+const storageBuffer = new StorageBuffer({ maxRows: BUFFER_MAX_ROWS });
+let lastFlushErrorLogAt = 0;
+let lastDropWarnAt = 0;
 
 // ── Database ────────────────────────────────────────────────────────────────
 
@@ -79,6 +88,9 @@ function initializeDatabase() {
   // WAL mode: readers don't block writers, writers don't block readers
   db.pragma('journal_mode = WAL');
 
+  // Cap WAL file size — truncated back to <=64MB at checkpoint
+  db.pragma('journal_size_limit = 67108864');
+
   // Performance tuning
   db.pragma('synchronous = NORMAL');  // safe with WAL
   db.pragma('cache_size = -8000');    // 8MB cache
@@ -110,7 +122,7 @@ function initializeDatabase() {
   log.info('Database ready (WAL mode)');
 }
 
-// Store sensor reading
+// Parse sensor data and enqueue rows for the micro-batch flush
 function storeSensorReading(sensorId, data, timestamp) {
   const readings = [];
 
@@ -131,75 +143,55 @@ function storeSensorReading(sensorId, data, timestamp) {
   }
 
   if (readings.length > 0) {
-    insertMany(readings);
+    storageBuffer.push(readings);
   }
 }
 
-// Query historical data — downsamples evenly when rows exceed limit
-function queryHistory(sensorId, metric, start, end, limit = 1000) {
-  let whereClause = 'WHERE sensor_id = ?';
-  const params = [sensorId];
-
-  if (metric) {
-    whereClause += ' AND metric = ?';
-    params.push(metric);
+// Flush buffered rows in one transaction. On failure the transaction rolls
+// back and rows stay queued for the next tick; the buffer cap bounds memory
+// if the DB stays unavailable.
+function flushStorageBuffer() {
+  const dropped = storageBuffer.takeDropped();
+  if (dropped > 0 && Date.now() - lastDropWarnAt > 10000) {
+    lastDropWarnAt = Date.now();
+    log.warn('Storage buffer overflow — dropped %d oldest readings (total %d)',
+      dropped, storageBuffer.droppedTotal);
   }
-
-  if (start) {
-    whereClause += ' AND timestamp >= ?';
-    params.push(start);
+  if (!db || storageBuffer.size === 0) return;
+  try {
+    insertMany(storageBuffer.peekAll());
+    storageBuffer.clear();
+  } catch (err) {
+    if (Date.now() - lastFlushErrorLogAt > 10000) {
+      lastFlushErrorLogAt = Date.now();
+      log.error({ err, buffered: storageBuffer.size }, 'Storage flush failed — will retry');
+    }
   }
-
-  if (end) {
-    whereClause += ' AND timestamp <= ?';
-    params.push(end);
-  }
-
-  // Check if downsampling is needed
-  const { cnt } = db.prepare(
-    `SELECT COUNT(id) AS cnt FROM sensor_readings ${whereClause}`
-  ).get(...params);
-
-  if (cnt <= limit) {
-    return db.prepare(
-      `SELECT metric, value, unit, timestamp FROM sensor_readings ${whereClause} ORDER BY timestamp DESC`
-    ).all(...params);
-  }
-
-  // Sample every Nth row to fit within limit while spanning the full time range
-  const step = Math.max(1, Math.floor(cnt / limit));
-  return db.prepare(`
-    SELECT metric, value, unit, timestamp FROM (
-      SELECT metric, value, unit, timestamp,
-             ROW_NUMBER() OVER (ORDER BY timestamp) AS rn
-      FROM sensor_readings ${whereClause}
-    ) WHERE rn % ? = 1
-    ORDER BY timestamp DESC
-    LIMIT ?
-  `).all(...params, step, limit);
 }
 
 let lastCleanup = { at: null, status: 'pending', rowsDeleted: 0, error: null };
 
-// Delete old data. Runs inside a setInterval — an uncaught throw here would
-// kill the service, so errors must be caught and surfaced via the health
-// check so retention failures are visible before the DB fills the disk.
-function cleanupOldData() {
+let cleanupInProgress = false;
+
+// Delete old data in chunks, yielding between chunks so ingestion is never
+// stalled. Runs from a setInterval — the try/catch spans the whole body so
+// the returned promise never rejects; failures surface via the health check.
+async function cleanupOldData() {
+  if (cleanupInProgress) return;
+  cleanupInProgress = true;
   const cutoffTimestamp = Date.now() / 1000 - (RETENTION_HOURS * 3600);
   const startedAt = Date.now();
   try {
-    const result = db.prepare('DELETE FROM sensor_readings WHERE timestamp < ?')
-      .run(cutoffTimestamp);
-
-    if (result.changes > 0) {
-      log.info('Cleaned up %d old readings (older than %dh)', result.changes, RETENTION_HOURS);
+    const rowsDeleted = await deleteExpiredReadings(db, cutoffTimestamp, CLEANUP_CHUNK_ROWS);
+    if (rowsDeleted > 0) {
+      log.info('Cleaned up %d old readings (older than %dh)', rowsDeleted, RETENTION_HOURS);
       // Reclaim space incrementally (free up to 1000 pages, non-blocking)
-      db.pragma('incremental_vacuum(1000)');
+      if (db.open) db.pragma('incremental_vacuum(1000)');
     }
     lastCleanup = {
       at: startedAt,
       status: 'ok',
-      rowsDeleted: result.changes,
+      rowsDeleted,
       durationMs: Date.now() - startedAt,
       error: null
     };
@@ -212,6 +204,8 @@ function cleanupOldData() {
       error: err.message
     };
     log.error({ err }, 'Retention cleanup failed — DB will grow until resolved');
+  } finally {
+    cleanupInProgress = false;
   }
 }
 
@@ -233,11 +227,14 @@ let ingestCount = 0;
 let stopHealthMonitor = null;
 
 function startPeriodicTasks() {
-  // Cleanup old data hourly
+  // Micro-batch flush of buffered readings
+  periodicTimers.push(setInterval(flushStorageBuffer, FLUSH_INTERVAL_MS));
+
+  // Cleanup old data every 5 minutes (small chunks, yields between chunks)
   periodicTimers.push(setInterval(() => {
     log.info('Running cleanup task...');
     cleanupOldData();
-  }, 3600000));
+  }, 300000));
 
   // Run cleanup once shortly after startup
   periodicTimers.push(setTimeout(() => {
@@ -289,7 +286,9 @@ function setupSocketServer() {
 
 // ── REST API ────────────────────────────────────────────────────────────────
 
-// Store sensor data (backward-compatible HTTP endpoint)
+// Store sensor data (backward-compatible HTTP endpoint). The write is
+// queued for the next micro-batch flush (≤~250ms), not yet durable when
+// the response is sent.
 app.post('/api/data', (req, res) => {
   try {
     const { sensorId, data, timestamp } = req.body;
@@ -314,12 +313,13 @@ app.get('/api/history/:sensorId', (req, res) => {
     const { sensorId } = req.params;
     const { metric, start, end, limit } = req.query;
 
-    const startTs = start ? parseFloat(start) : null;
-    const endTs = end ? parseFloat(end) : null;
-    const MAX_LIMIT = 50000;
-    const limitNum = Math.min(limit ? parseInt(limit, 10) || 1000 : 1000, MAX_LIMIT);
-
-    const results = queryHistory(sensorId, metric, startTs, endTs, limitNum);
+    const results = queryHistory(db, sensorId, {
+      metric: metric || null,
+      start: start ? parseFloat(start) : null,
+      end: end ? parseFloat(end) : null,
+      limit: limit ? parseInt(limit, 10) : 1000,
+      maxWindowSec: RETENTION_HOURS * 3600
+    });
 
     res.json({
       sensorId,
@@ -349,10 +349,21 @@ app.get('/api/sensors', (req, res) => {
 // Get metrics for a sensor
 app.get('/api/sensors/:sensorId/metrics', (req, res) => {
   try {
-    const metrics = db.prepare(
-      'SELECT DISTINCT metric, unit FROM sensor_readings WHERE sensor_id = ? ORDER BY metric'
-    ).all(req.params.sensorId);
-    res.json({ sensorId: req.params.sensorId, metrics });
+    const { sensorId } = req.params;
+    // Covering-index distinct scan on idx_metric_timestamp (DISTINCT metric,
+    // unit would force a per-row table fetch — unit is not indexed)
+    const metricRows = db.prepare(
+      'SELECT DISTINCT metric FROM sensor_readings WHERE sensor_id = ? ORDER BY metric'
+    ).all(sensorId);
+    // Latest unit per metric: single index seek + one row fetch each
+    const unitStmt = db.prepare(
+      'SELECT unit FROM sensor_readings WHERE sensor_id = ? AND metric = ? ORDER BY timestamp DESC LIMIT 1'
+    );
+    const metrics = metricRows.map(({ metric }) => ({
+      metric,
+      unit: unitStmt.get(sensorId, metric)?.unit ?? null
+    }));
+    res.json({ sensorId, metrics });
   } catch (error) {
     log.error({ err: error }, 'Error getting metrics');
     res.status(500).json({ error: 'Query failed' });
@@ -408,6 +419,8 @@ service.initialize = async () => {
         ingestsSinceLast: batch,
         dbSizeMb,
         storageClients: storageIo?.sockets?.sockets?.size ?? 0,
+        bufferedRows: storageBuffer.size,
+        droppedRows: storageBuffer.droppedTotal,
         lastCleanupStatus: lastCleanup.status,
         lastCleanupRows: lastCleanup.rowsDeleted
       };
@@ -427,6 +440,11 @@ service.onShutdown = async () => {
   if (storageIo) {
     storageIo.close();
   }
+
+  // Persist any buffered readings before closing the DB (flushStorageBuffer
+  // catches its own errors; timers were already cleared above so no flush
+  // can fire after db.close())
+  flushStorageBuffer();
 
   if (db) {
     log.info('Closing database...');

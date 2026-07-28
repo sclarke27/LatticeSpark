@@ -144,6 +144,18 @@ let pollingIntervals = new Map();
 let coordinatorListeners = {}; // stored so we can remove on shutdown
 const lastStoragePush = new Map(); // throttle storage writes per sensor
 const STORAGE_INTERVAL = parseInt(process.env.STORAGE_INTERVAL || '2000', 10);
+
+// Storage socket backpressure: engine.io's ws transport fake-drains `writable`
+// every tick, so it never reflects TCP backpressure. If storage-service stalls
+// (sync SQLite work), the client-side ws buffer grows without bound. Gate each
+// push on the raw ws bufferedAmount (same introspection as checkSlowClients)
+// and drop the sample — samples are throttled snapshots, the next one arrives
+// within STORAGE_INTERVAL, and spoke durability lives in the ReplayQueue.
+const STORAGE_SOCKET_BUFFER_BYTES = parseInt(
+  process.env.STORAGE_SOCKET_BUFFER_BYTES || String(1024 * 1024), 10
+);
+let storagePushesDropped = 0;
+let lastStorageDropWarnAt = 0;
 const latestDataCache = new Map(); // componentId -> latest validated data
 const remoteSpokes = new Map(); // nodeId -> { components, lastSeq, lastSeen, online }
 const remoteComponentIndex = new Map(); // canonicalId -> { nodeId, componentId, component }
@@ -949,6 +961,22 @@ function connectToStorageService() {
 
 function pushToStorage(sensorId, data) {
   if (!storageSocket?.connected) return;
+  // transport.writable is fake-drained every tick, so gate on the raw ws
+  // buffered bytes instead (client-side mirror of checkSlowClients).
+  const buffered = storageSocket.io?.engine?.transport?.ws?.bufferedAmount ?? 0;
+  if (buffered > STORAGE_SOCKET_BUFFER_BYTES) {
+    storagePushesDropped++;
+    const now = Date.now();
+    if (now - lastStorageDropWarnAt >= 30000) {
+      lastStorageDropWarnAt = now;
+      log.warn({
+        bufferedBytes: buffered,
+        thresholdBytes: STORAGE_SOCKET_BUFFER_BYTES,
+        totalDropped: storagePushesDropped
+      }, 'Storage socket backpressure - dropping samples');
+    }
+    return;
+  }
   storageSocket.emit('store', {
     sensorId,
     data,
@@ -1178,6 +1206,8 @@ service.initialize = async () => {
       arduinoReaders: arduinoReaders.size,
       arduinoComponents: arduinoComponents.length,
       storageConnected: storageSocket?.connected === true,
+      storagePushesDropped,
+      storageBufferedBytes: storageSocket?.io?.engine?.transport?.ws?.bufferedAmount ?? 0,
       slowClientsDisconnected,
       remoteSpokesPruned
     })
