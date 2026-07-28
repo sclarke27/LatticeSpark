@@ -34,6 +34,8 @@ export default {
               export const Tooltip = {};
               export const Legend = {};
               export const CategoryScale = {};
+              export const Title = {};
+              export const Decimation = {};
               Chart.register = function() {};
               export default Chart;
             `,

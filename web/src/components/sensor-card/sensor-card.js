@@ -162,6 +162,16 @@ export class SensorCard extends BaseChartCard {
   }
 
   updated(changedProperties) {
+    if (changedProperties.has('component')) {
+      const prev = changedProperties.get('component');
+      if (prev && this.component && prev.id !== this.component.id) {
+        // Element reused for a different component (positional re-render):
+        // reset tab state so the base-class rebuild targets a valid tab.
+        const tabs = this.getTabs();
+        this.activeTab = tabs.length > 0 ? tabs[0].id : undefined;
+      }
+    }
+
     if (changedProperties.has('data') && this.data && !this.activeTab) {
       const tabs = this.getTabs();
       if (tabs.length > 0) {
@@ -215,6 +225,10 @@ export class SensorCard extends BaseChartCard {
     if (data.length > range.fetchLimit) {
       data.splice(0, data.length - range.fetchLimit);
     }
+    // Cap live array near display size; decimation already renders <=500 samples
+    if (data.length > MAX_DISPLAY_POINTS * 2) {
+      chart.data.datasets[0].data = downsample(data, MAX_DISPLAY_POINTS);
+    }
 
     chart.update('none');
   }
@@ -241,6 +255,10 @@ export class SensorCard extends BaseChartCard {
       if (trimIndex > 0) data.splice(0, trimIndex);
       if (data.length > range.fetchLimit) {
         data.splice(0, data.length - range.fetchLimit);
+      }
+      // Cap live array near display size; decimation already renders <=500 samples
+      if (data.length > MAX_DISPLAY_POINTS * 2) {
+        chart.data.datasets[i].data = downsample(data, MAX_DISPLAY_POINTS);
       }
     });
 

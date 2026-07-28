@@ -75,12 +75,29 @@ export class BaseChartCard extends BaseCard {
     super.updated(changedProperties);
 
     if (changedProperties.has('component')) {
-      this.updateCharts();
+      const prev = changedProperties.get('component');
+      if (this._chartConfigChanged(prev, this.component)) {
+        // Destroy first: positional element reuse (spokes joining/leaving)
+        // would otherwise leak detached charts keyed by the old component id
+        this.destroyCharts();
+        this.updateCharts();
+      }
     }
 
     if (changedProperties.has('data') && this.data) {
       this._scheduleChartUpdate();
     }
+  }
+
+  // Components broadcasts deliver fresh object references every time; only
+  // rebuild charts (and refetch history) when identity or chart config changed.
+  _chartConfigChanged(prev, next) {
+    if (!prev || !next) return true;
+    if (prev.id !== next.id) return true;
+    const prevMetrics = prev.config?.metrics;
+    const nextMetrics = next.config?.metrics;
+    if (prevMetrics === nextMetrics) return false;
+    return JSON.stringify(prevMetrics ?? null) !== JSON.stringify(nextMetrics ?? null);
   }
 
   _scheduleChartUpdate() {
